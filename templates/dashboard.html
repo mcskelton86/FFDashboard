@@ -55,10 +55,38 @@
 
     .tabs-container {
       display: flex;
+      justify-content: center;
       background: #f8fafb;
       border-bottom: 2px solid #e5e7eb;
       padding: 0 40px;
       gap: 0;
+    }
+
+    .header-actions {
+      margin-top: 20px;
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .header-btn {
+      background: rgba(255,255,255,0.15);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.4);
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+      transition: all 0.2s ease;
+    }
+
+    .header-btn:hover {
+      background: rgba(255,255,255,0.25);
+      transform: translateY(-1px);
     }
 
     .tab-button {
@@ -465,6 +493,10 @@
       <h1>💰 Household Financial Dashboard</h1>
       <p>Matthew & Riley's combined finances</p>
       <div class="last-update" id="lastUpdate"></div>
+      <div class="header-actions">
+        <a href="/upload" class="header-btn">📥 Upload OFX Statement</a>
+        <button class="header-btn" onclick="document.getElementById('payslipFile').click()">📄 Upload Payslip</button>
+      </div>
     </div>
 
     <div class="tabs-container">
