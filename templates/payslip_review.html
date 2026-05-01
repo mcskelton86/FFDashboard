@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Review Payslip</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: linear-gradient(135deg, #A7C7DD 0%, #E8EEF5 100%);
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 20px auto;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #5A8FB0 0%, #7BA5C5 100%);
+      color: white;
+      padding: 40px;
+      text-align: center;
+      border-bottom: 3px solid #4A7F9E;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 32px;
+      font-weight: 700;
+    }
+
+    .header p {
+      margin: 8px 0 0 0;
+      opacity: 0.95;
+    }
+
+    .content {
+      padding: 40px;
+    }
+
+    .review-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+      margin-bottom: 40px;
+    }
+
+    .review-section h2 {
+      margin-top: 0;
+      color: #1f2937;
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 20px;
+    }
+
+    /* Image Section */
+    .image-container {
+      background: #f8fafb;
+      border-radius: 12px;
+      border: 1px solid #e5e7eb;
+      padding: 24px;
+      text-align: center;
+      min-height: 400px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #payslipImage {
+      max-width: 100%;
+      max-height: 600px;
+      border-radius: 8px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+
+    .no-image {
+      color: #9ca3af;
+      text-align: center;
+    }
+
+    /* Form Section */
+    .form-group {
+      margin-bottom: 24px;
+    }
+
+    .form-group label {
+      display: block;
+      font-weight: 600;
+      color: #1f2937;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 15px;
+      font-family: inherit;
+      transition: all 0.3s ease;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: #5A8FB0;
+      box-shadow: 0 0 0 3px rgba(90, 143, 176, 0.1);
+    }
+
+    .form-group input[type="number"] {
+      font-size: 16px;
+    }
+
+    .ocr-hint {
+      font-size: 12px;
+      color: #9ca3af;
+      margin-top: 6px;
+    }
+
+    .extracted-badge {
+      display: inline-block;
+      background: #e0f2fe;
+      color: #0369a1;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-top: 8px;
+    }
+
+    /* OCR Text Section */
+    .ocr-text-section {
+      background: #f8fafb;
+      border-radius: 12px;
+      border: 1px solid #e5e7eb;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .ocr-text-section h3 {
+      margin: 0 0 12px 0;
+      font-size: 14px;
+      font-weight: 600;
+      color: #1f2937;
+    }
+
+    .ocr-text {
+      background: white;
+      border: 1px solid #e5e7eb;
+      padding: 12px;
+      border-radius: 6px;
+      max-height: 200px;
+      overflow-y: auto;
+      font-size: 12px;
+      color: #6b7280;
+      line-height: 1.6;
+      font-family: 'Monaco', 'Courier New', monospace;
+    }
+
+    /* Controls */
+    .controls {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+      padding-top: 20px;
+      border-top: 1px solid #e5e7eb;
+    }
+
+    .btn {
+      padding: 12px 32px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 15px;
+      transition: all 0.3s ease;
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #34D399 0%, #10B981 100%);
+      color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(52, 211, 153, 0.3);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: #f3f4f6;
+      color: #1f2937;
+      border: 1px solid #d1d5db;
+    }
+
+    .btn-secondary:hover {
+      background: #e5e7eb;
+    }
+
+    .error {
+      background: #fee2e2;
+      color: #991b1b;
+      padding: 16px;
+      border-radius: 8px;
+      border-left: 4px solid #ef4444;
+      margin-bottom: 20px;
+    }
+
+    .success {
+      background: #d1fae5;
+      color: #065f46;
+      padding: 16px;
+      border-radius: 8px;
+      border-left: 4px solid #10b981;
+      margin-bottom: 20px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #6b7280;
+    }
+
+    .loading::after {
+      content: '';
+      display: inline-block;
+      width: 24px;
+      height: 24px;
+      border: 3px solid #d1d5db;
+      border-top-color: #5A8FB0;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-left: 12px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @media (max-width: 768px) {
+      .header {
+        padding: 24px;
+      }
+
+      .header h1 {
+        font-size: 24px;
+      }
+
+      .content {
+        padding: 20px;
+      }
+
+      .review-layout {
+        grid-template-columns: 1fr;
+        gap: 20px;
+      }
+
+      .image-container {
+        min-height: 300px;
+      }
+
+      #payslipImage {
+        max-height: 400px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📄 Review Payslip</h1>
+      <p>Confirm the extracted information before saving</p>
+    </div>
+
+    <div class="content">
+      <div id="error" class="error" style="display:none;"></div>
+      <div id="success" class="success" style="display:none;"></div>
+
+      <div id="loading" class="loading">Processing payslip image...</div>
+
+      <div id="reviewContent" style="display:none;">
+        <div class="review-layout">
+          <!-- Left: Image -->
+          <div class="review-section">
+            <h2>Original Payslip</h2>
+            <div class="image-container">
+              <img id="payslipImage" style="display:none;">
+              <div id="noImage" class="no-image">
+                <div style="font-size: 48px; margin-bottom: 12px;">📋</div>
+                <p>No image loaded</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Form -->
+          <div class="review-section">
+            <h2>Extracted Data</h2>
+
+            <div class="form-group">
+              <label for="payDate">Pay Date *</label>
+              <input type="text" id="payDate" placeholder="e.g., 01 May 2026" required>
+              <div class="ocr-hint">Date found in the payslip image</div>
+            </div>
+
+            <div class="form-group">
+              <label for="payAmount">Net Pay Amount (£) *</label>
+              <input type="number" id="payAmount" placeholder="e.g., 1234.56" step="0.01" min="0" required>
+              <div class="ocr-hint">Total amount received</div>
+            </div>
+
+            <div class="form-group">
+              <label for="hoursWorked">Hours Worked</label>
+              <input type="number" id="hoursWorked" placeholder="e.g., 40" step="0.5" min="0">
+              <div class="ocr-hint">Total hours for this pay period (optional)</div>
+            </div>
+
+            <div class="form-group">
+              <label for="payPerson">Who receives this pay? *</label>
+              <select id="payPerson" required>
+                <option value="">Select person</option>
+                <option value="Matthew" selected>Matthew (Hourly)</option>
+                <option value="Riley">Riley (Salary)</option>
+              </select>
+            </div>
+
+            <!-- OCR Text Section -->
+            <div class="ocr-text-section">
+              <h3>Extracted OCR Text</h3>
+              <div class="ocr-text" id="ocrText">No text extracted</div>
+            </div>
+
+            <!-- Controls -->
+            <div class="controls">
+              <button class="btn btn-primary" onclick="savePayslip()">✓ Confirm & Save</button>
+              <button class="btn btn-secondary" onclick="goBack()">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let uploadedData = null;
+
+    function getQueryParam(param) {
+      const params = new URLSearchParams(window.location.search);
+      return params.get(param);
+    }
+
+    function showError(message) {
+      document.getElementById('error').textContent = message;
+      document.getElementById('error').style.display = 'block';
+    }
+
+    function showSuccess(message) {
+      document.getElementById('success').textContent = message;
+      document.getElementById('success').style.display = 'block';
+    }
+
+    function loadPayslipData() {
+      const dataStr = getQueryParam('data');
+      if (!dataStr) {
+        showError('No payslip data found. Please upload an image first.');
+        return;
+      }
+
+      try {
+        uploadedData = JSON.parse(decodeURIComponent(dataStr));
+
+        if (!uploadedData.success) {
+          showError('Error processing payslip: ' + uploadedData.error);
+          return;
+        }
+
+        // Display image
+        const img = document.getElementById('payslipImage');
+        if (uploadedData.image_base64) {
+          img.src = 'data:image/png;base64,' + uploadedData.image_base64;
+          img.style.display = 'block';
+          document.getElementById('noImage').style.display = 'none';
+        }
+
+        // Display OCR text
+        document.getElementById('ocrText').textContent = uploadedData.ocr_text || 'No text found';
+
+        // Populate extracted fields
+        const extracted = uploadedData.extracted || {};
+        if (extracted.date) {
+          document.getElementById('payDate').value = extracted.date;
+        }
+        if (extracted.amount) {
+          document.getElementById('payAmount').value = extracted.amount;
+        }
+        if (extracted.hours) {
+          document.getElementById('hoursWorked').value = extracted.hours;
+        }
+
+        // Show review content
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('reviewContent').style.display = 'block';
+      } catch (e) {
+        showError('Error parsing payslip data: ' + e.message);
+      }
+    }
+
+    function savePayslip() {
+      const date = document.getElementById('payDate').value;
+      const amount = document.getElementById('payAmount').value;
+      const hours = document.getElementById('hoursWorked').value;
+      const person = document.getElementById('payPerson').value;
+
+      if (!date || !amount) {
+        showError('Please enter date and amount');
+        return;
+      }
+
+      const btn = event.target;
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+
+      fetch('/save-payslip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: date,
+          amount: parseFloat(amount),
+          hours: hours ? parseFloat(hours) : null,
+          person: person
+        })
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            showSuccess('✓ Payslip saved successfully!');
+            setTimeout(() => {
+              window.location.href = '/dashboard?tab=income';
+            }, 1500);
+          } else {
+            showError('Error saving payslip: ' + data.error);
+            btn.disabled = false;
+            btn.textContent = '✓ Confirm & Save';
+          }
+        })
+        .catch(err => {
+          showError('Error: ' + err.message);
+          btn.disabled = false;
+          btn.textContent = '✓ Confirm & Save';
+        });
+    }
+
+    function goBack() {
+      window.location.href = '/dashboard?tab=income';
+    }
+
+    window.addEventListener('load', loadPayslipData);
+  </script>
+</body>
+</html>

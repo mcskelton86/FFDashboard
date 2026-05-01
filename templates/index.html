@@ -10,40 +10,48 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       margin: 0;
       padding: 20px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #A7C7DD 0%, #E8EEF5 100%);
       min-height: 100vh;
     }
     .container {
       max-width: 1200px;
       margin: 0 auto;
       background: white;
-      border-radius: 12px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.15);
       overflow: hidden;
     }
     .header {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #5A8FB0 0%, #7BA5C5 100%);
       color: white;
-      padding: 30px;
+      padding: 40px;
       text-align: center;
+      border-bottom: 3px solid #4A7F9E;
     }
     .header h1 {
       margin: 0;
       font-size: 32px;
+      font-weight: 700;
     }
     .header p {
       margin: 10px 0 0 0;
-      opacity: 0.9;
+      opacity: 0.95;
     }
     .content {
       padding: 30px;
     }
     .upload-section {
-      border: 2px dashed #667eea;
-      border-radius: 8px;
+      border: 2px dashed #d1d5db;
+      border-radius: 12px;
       padding: 30px;
       text-align: center;
       margin-bottom: 20px;
+      background: #f8fafb;
+      transition: all 0.3s ease;
+    }
+    .upload-section:hover {
+      border-color: #5A8FB0;
+      background: rgba(90, 143, 176, 0.05);
     }
     .upload-section h2 {
       margin: 0 0 15px 0;
@@ -65,19 +73,20 @@
       margin: 15px 0;
     }
     button {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #5A8FB0 0%, #7BA5C5 100%);
       color: white;
       padding: 12px 30px;
       border: none;
-      border-radius: 6px;
+      border-radius: 8px;
       cursor: pointer;
       font-weight: 600;
-      font-size: 16px;
+      font-size: 15px;
       margin: 5px;
+      transition: all 0.3s ease;
     }
     button:hover {
       transform: translateY(-2px);
-      box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+      box-shadow: 0 5px 15px rgba(90, 143, 176, 0.3);
     }
     .loading {
       display: none;
@@ -89,7 +98,7 @@
     }
     .spinner {
       border: 4px solid #f3f4f6;
-      border-top: 4px solid #667eea;
+      border-top: 4px solid #5A8FB0;
       border-radius: 50%;
       width: 40px;
       height: 40px;
@@ -123,7 +132,7 @@
       margin: 20px 0;
     }
     .transactions-table th {
-      background: #667eea;
+      background: #5A8FB0;
       color: white;
       padding: 12px;
       text-align: left;
@@ -186,10 +195,10 @@
       <h1>💰 OFX Statement Importer</h1>
       <p>Import bank transactions from OFX files</p>
     </div>
-
+    
     <div class="content">
       <div id="message" class="message"></div>
-
+      
       <div id="uploadSection" class="upload-section">
         <h2>📋 Upload OFX File</h2>
         <p>Export your statement as OFX from your bank</p>
@@ -200,18 +209,18 @@
         <br>
         <button onclick="parseOFX()">Parse OFX</button>
       </div>
-
+      
       <div id="loading" class="loading">
         <div class="spinner"></div>
         <p>Processing...</p>
       </div>
-
+      
       <div id="reviewSection" class="review-section">
         <div class="review-header">
           <h2>✓ Review Transactions</h2>
           <p id="reviewMessage"></p>
         </div>
-
+        
         <table class="transactions-table">
           <thead>
             <tr>
@@ -224,28 +233,34 @@
           </thead>
           <tbody id="transactionsList"></tbody>
         </table>
-
+        
         <div class="action-buttons">
           <button class="btn-save" onclick="saveTransactions()">Save to Sheet</button>
           <button class="btn-cancel" onclick="cancelReview()">Cancel</button>
         </div>
+      </div>
+
+      <div id="finishedSection" style="display: none; text-align: center; padding: 40px;">
+        <h2 style="color: #34D399; margin-bottom: 20px;">✓ Transactions saved successfully!</h2>
+        <p style="color: #6b7280; margin-bottom: 30px;">Your transactions have been saved to Google Sheets.</p>
+        <a href="/dashboard" style="background: linear-gradient(135deg, #5A8FB0 0%, #7BA5C5 100%); color: white; padding: 12px 32px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 15px; text-decoration: none; display: inline-block; transition: all 0.3s ease;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 5px 15px rgba(90, 143, 176, 0.3)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">📊 View Dashboard</a>
       </div>
     </div>
   </div>
 
   <script>
     let currentTransactions = [];
-
+    
     function showMessage(text, type) {
       const msg = document.getElementById('message');
       msg.textContent = text;
       msg.className = 'message active ' + type;
       setTimeout(() => msg.className = 'message', 5000);
     }
-
+    
     function parseOFX() {
       let content = '';
-
+      
       // Try file input first
       const file = document.getElementById('ofxFile').files[0];
       if (file) {
@@ -265,10 +280,10 @@
         sendParseRequest(content);
       }
     }
-
+    
     function sendParseRequest(content) {
       document.getElementById('loading').classList.add('active');
-
+      
       fetch('/parse-ofx', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -277,7 +292,7 @@
       .then(r => r.json())
       .then(data => {
         document.getElementById('loading').classList.remove('active');
-
+        
         if (data.success) {
           currentTransactions = data.transactions;
           displayReview(data.transactions, data.count);
@@ -290,15 +305,15 @@
         showMessage('Error: ' + e.message, 'error');
       });
     }
-
+    
     function displayReview(transactions, count) {
       document.getElementById('uploadSection').style.display = 'none';
       document.getElementById('reviewSection').classList.add('active');
       document.getElementById('reviewMessage').textContent = `Found ${count} transactions`;
-
+      
       const tbody = document.getElementById('transactionsList');
       tbody.innerHTML = '';
-
+      
       transactions.forEach((txn, i) => {
         const row = tbody.insertRow();
         row.innerHTML = `
@@ -325,7 +340,7 @@
         `;
       });
     }
-
+    
     function saveTransactions() {
       document.getElementById('loading').classList.add('active');
 
@@ -339,8 +354,8 @@
         document.getElementById('loading').classList.remove('active');
 
         if (data.success) {
-          showMessage('✓ ' + data.message, 'success');
-          setTimeout(cancelReview, 2000);
+          document.getElementById('reviewSection').classList.remove('active');
+          document.getElementById('finishedSection').style.display = 'block';
         } else {
           showMessage('Error: ' + data.error, 'error');
         }
@@ -350,10 +365,11 @@
         showMessage('Error: ' + e.message, 'error');
       });
     }
-
+    
     function cancelReview() {
       document.getElementById('uploadSection').style.display = 'block';
       document.getElementById('reviewSection').classList.remove('active');
+      document.getElementById('finishedSection').style.display = 'none';
       document.getElementById('ofxFile').value = '';
       document.getElementById('ofxPaste').value = '';
       currentTransactions = [];
