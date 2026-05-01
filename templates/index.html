@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OFX Statement Importer</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 32px;
+    }
+    .header p {
+      margin: 10px 0 0 0;
+      opacity: 0.9;
+    }
+    .content {
+      padding: 30px;
+    }
+    .upload-section {
+      border: 2px dashed #667eea;
+      border-radius: 8px;
+      padding: 30px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .upload-section h2 {
+      margin: 0 0 15px 0;
+      color: #333;
+    }
+    .upload-section p {
+      color: #666;
+      margin: 10px 0;
+    }
+    textarea {
+      width: 100%;
+      height: 150px;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 12px;
+      resize: vertical;
+      margin: 15px 0;
+    }
+    button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 12px 30px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 16px;
+      margin: 5px;
+    }
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    }
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 20px;
+    }
+    .loading.active {
+      display: block;
+    }
+    .spinner {
+      border: 4px solid #f3f4f6;
+      border-top: 4px solid #667eea;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 10px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .message {
+      padding: 15px;
+      border-radius: 6px;
+      margin: 20px 0;
+      display: none;
+    }
+    .message.active {
+      display: block;
+    }
+    .message.success {
+      background: #d1fae5;
+      color: #065f46;
+    }
+    .message.error {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+    .transactions-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+    }
+    .transactions-table th {
+      background: #667eea;
+      color: white;
+      padding: 12px;
+      text-align: left;
+      font-weight: 600;
+    }
+    .transactions-table td {
+      padding: 12px;
+      border-bottom: 1px solid #eee;
+    }
+    .amount-in {
+      color: #22c55e;
+      font-weight: 600;
+    }
+    .amount-out {
+      color: #ef4444;
+      font-weight: 600;
+    }
+    .category-select {
+      padding: 6px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .review-section {
+      display: none;
+    }
+    .review-section.active {
+      display: block;
+    }
+    .review-header {
+      background: #f8f9ff;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    .review-header h2 {
+      margin: 0 0 10px 0;
+    }
+    .action-buttons {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    .btn-save {
+      background: #22c55e;
+      flex: 1;
+    }
+    .btn-save:hover {
+      background: #16a34a;
+    }
+    .btn-cancel {
+      background: #6b7280;
+      flex: 1;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>💰 OFX Statement Importer</h1>
+      <p>Import bank transactions from OFX files</p>
+    </div>
+
+    <div class="content">
+      <div id="message" class="message"></div>
+
+      <div id="uploadSection" class="upload-section">
+        <h2>📋 Upload OFX File</h2>
+        <p>Export your statement as OFX from your bank</p>
+        <input type="file" id="ofxFile" accept=".ofx,.txt">
+        <br>
+        <p style="font-size: 12px; color: #999;">OR paste OFX content below:</p>
+        <textarea id="ofxPaste" placeholder="Paste OFX content here..."></textarea>
+        <br>
+        <button onclick="parseOFX()">Parse OFX</button>
+      </div>
+
+      <div id="loading" class="loading">
+        <div class="spinner"></div>
+        <p>Processing...</p>
+      </div>
+
+      <div id="reviewSection" class="review-section">
+        <div class="review-header">
+          <h2>✓ Review Transactions</h2>
+          <p id="reviewMessage"></p>
+        </div>
+
+        <table class="transactions-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Description</th>
+              <th>Out</th>
+              <th>In</th>
+              <th>Category</th>
+            </tr>
+          </thead>
+          <tbody id="transactionsList"></tbody>
+        </table>
+
+        <div class="action-buttons">
+          <button class="btn-save" onclick="saveTransactions()">Save to Sheet</button>
+          <button class="btn-cancel" onclick="cancelReview()">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentTransactions = [];
+
+    function showMessage(text, type) {
+      const msg = document.getElementById('message');
+      msg.textContent = text;
+      msg.className = 'message active ' + type;
+      setTimeout(() => msg.className = 'message', 5000);
+    }
+
+    function parseOFX() {
+      let content = '';
+
+      // Try file input first
+      const file = document.getElementById('ofxFile').files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          content = e.target.result;
+          sendParseRequest(content);
+        };
+        reader.readAsText(file);
+      } else {
+        // Try textarea
+        content = document.getElementById('ofxPaste').value;
+        if (!content) {
+          showMessage('Upload a file or paste OFX content', 'error');
+          return;
+        }
+        sendParseRequest(content);
+      }
+    }
+
+    function sendParseRequest(content) {
+      document.getElementById('loading').classList.add('active');
+
+      fetch('/parse-ofx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: content })
+      })
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById('loading').classList.remove('active');
+
+        if (data.success) {
+          currentTransactions = data.transactions;
+          displayReview(data.transactions, data.count);
+        } else {
+          showMessage('Error: ' + data.error, 'error');
+        }
+      })
+      .catch(e => {
+        document.getElementById('loading').classList.remove('active');
+        showMessage('Error: ' + e.message, 'error');
+      });
+    }
+
+    function displayReview(transactions, count) {
+      document.getElementById('uploadSection').style.display = 'none';
+      document.getElementById('reviewSection').classList.add('active');
+      document.getElementById('reviewMessage').textContent = `Found ${count} transactions`;
+
+      const tbody = document.getElementById('transactionsList');
+      tbody.innerHTML = '';
+
+      transactions.forEach((txn, i) => {
+        const row = tbody.insertRow();
+        row.innerHTML = `
+          <td>${txn.date}</td>
+          <td>${txn.description}</td>
+          <td class="amount-out">${txn.amountOut > 0 ? '£' + txn.amountOut.toFixed(2) : '-'}</td>
+          <td class="amount-in">${txn.amountIn > 0 ? '£' + txn.amountIn.toFixed(2) : '-'}</td>
+          <td>
+            <select class="category-select" onchange="currentTransactions[${i}].category = this.value">
+              <option value="${txn.category}">${txn.category}</option>
+              <option>Groceries</option>
+              <option>Shopping</option>
+              <option>Utilities</option>
+              <option>Entertainment</option>
+              <option>Transport</option>
+              <option>Subscriptions</option>
+              <option>Healthcare</option>
+              <option>Housing</option>
+              <option>Council Tax</option>
+              <option>Phone & Internet</option>
+              <option>Other</option>
+            </select>
+          </td>
+        `;
+      });
+    }
+
+    function saveTransactions() {
+      document.getElementById('loading').classList.add('active');
+
+      fetch('/save-transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transactions: currentTransactions })
+      })
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById('loading').classList.remove('active');
+
+        if (data.success) {
+          showMessage('✓ ' + data.message, 'success');
+          setTimeout(cancelReview, 2000);
+        } else {
+          showMessage('Error: ' + data.error, 'error');
+        }
+      })
+      .catch(e => {
+        document.getElementById('loading').classList.remove('active');
+        showMessage('Error: ' + e.message, 'error');
+      });
+    }
+
+    function cancelReview() {
+      document.getElementById('uploadSection').style.display = 'block';
+      document.getElementById('reviewSection').classList.remove('active');
+      document.getElementById('ofxFile').value = '';
+      document.getElementById('ofxPaste').value = '';
+      currentTransactions = [];
+    }
+  </script>
+</body>
+</html>
