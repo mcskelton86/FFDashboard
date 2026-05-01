@@ -212,6 +212,10 @@ def parse_payslip_text(ocr_text):
 
 @app.route('/')
 def index():
+    return render_template('dashboard.html')
+
+@app.route('/upload')
+def upload():
     return render_template('index.html')
 
 @app.route('/dashboard')
