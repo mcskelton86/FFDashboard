@@ -1,8 +1,10 @@
 from flask import Flask, render_template, request, jsonify
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 import gspread
 from google.oauth2.service_account import Credentials
+import os
+import json
 
 app = Flask(__name__)
 
@@ -12,14 +14,141 @@ SHEET_ID = '1nnEwkIrvAQwIIQDnHBPAYumoTBv04wgOnq_R8A7xuIM'
 
 def get_sheets_client():
     try:
-        creds = Credentials.from_service_account_file('creds.json', scopes=SCOPES)
+        creds_json = os.environ.get('GOOGLE_CREDENTIALS')
+        if not creds_json:
+            print("GOOGLE_CREDENTIALS not found in environment")
+            return None
+        creds_dict = json.loads(creds_json)
+        creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         return gspread.authorize(creds)
+    except Exception as e:
+        print(f"Auth error: {e}")
+        return None
+
+def get_all_transactions():
+    """Fetch all transactions from Google Sheet"""
+    try:
+        client = get_sheets_client()
+        if not client:
+            return []
+
+        sheet = client.open_by_key(SHEET_ID).worksheet('Transactions')
+        rows = sheet.get_all_records()
+        return rows
+    except Exception as e:
+        print(f"Error fetching transactions: {e}")
+        return []
+
+def parse_date(date_str):
+    """Parse date string in format 'DD MMM YYYY'"""
+    try:
+        return datetime.strptime(date_str, '%d %b %Y')
     except:
         return None
+
+def get_this_month_summary():
+    """Get summary for current month"""
+    transactions = get_all_transactions()
+    now = datetime.now()
+    current_month = now.month
+    current_year = now.year
+
+    total_in = 0
+    total_out = 0
+    by_category = {}
+
+    for txn in transactions:
+        try:
+            date_obj = parse_date(txn.get('Date', ''))
+            if not date_obj or date_obj.month != current_month or date_obj.year != current_year:
+                continue
+
+            amount_in = float(txn.get('Amount In', 0) or 0)
+            amount_out = float(txn.get('Amount Out', 0) or 0)
+            category = txn.get('Category', 'Other')
+
+            total_in += amount_in
+            total_out += amount_out
+
+            if category not in by_category:
+                by_category[category] = 0
+            by_category[category] += amount_out
+        except:
+            continue
+
+    net = total_in - total_out
+    safe_to_spend = max(0, net)
+
+    return {
+        'total_in': round(total_in, 2),
+        'total_out': round(total_out, 2),
+        'net': round(net, 2),
+        'safe_to_spend': round(safe_to_spend, 2),
+        'by_category': {k: round(v, 2) for k, v in sorted(by_category.items(), key=lambda x: x[1], reverse=True)}
+    }
+
+def get_12_month_trend():
+    """Get monthly totals for last 12 months"""
+    transactions = get_all_transactions()
+    now = datetime.now()
+
+    months = {}
+    for i in range(12):
+        date = now - timedelta(days=30*i)
+        key = date.strftime('%b %Y')
+        months[key] = {'in': 0, 'out': 0}
+
+    for txn in transactions:
+        try:
+            date_obj = parse_date(txn.get('Date', ''))
+            if not date_obj:
+                continue
+
+            if (now - date_obj).days > 365:
+                continue
+
+            key = date_obj.strftime('%b %Y')
+            if key not in months:
+                months[key] = {'in': 0, 'out': 0}
+
+            amount_in = float(txn.get('Amount In', 0) or 0)
+            amount_out = float(txn.get('Amount Out', 0) or 0)
+
+            months[key]['in'] += amount_in
+            months[key]['out'] += amount_out
+        except:
+            continue
+
+    sorted_months = sorted(months.items(), key=lambda x: datetime.strptime(x[0], '%b %Y'))
+
+    return {
+        'labels': [m[0] for m in sorted_months],
+        'income': [round(m[1]['in'], 2) for m in sorted_months],
+        'expenses': [round(m[1]['out'], 2) for m in sorted_months]
+    }
 
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/dashboard')
+def dashboard():
+    return render_template('dashboard.html')
+
+@app.route('/api/dashboard-data')
+def api_dashboard_data():
+    """API endpoint for dashboard data"""
+    try:
+        summary = get_this_month_summary()
+        trend = get_12_month_trend()
+
+        return jsonify({
+            'success': True,
+            'summary': summary,
+            'trend': trend
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/parse-ofx', methods=['POST'])
 def parse_ofx():
@@ -47,14 +176,12 @@ def parse_ofx_content(ofx_text):
     """Parse OFX format and extract transactions"""
     transactions = []
 
-    # Find all STMTTRN blocks
     pattern = r'<STMTTRN>.*?</STMTTRN>'
     matches = re.finditer(pattern, ofx_text, re.DOTALL)
 
     for match in matches:
         stmttrn = match.group(0)
 
-        # Extract transaction details
         trntype = extract_ofx_field(stmttrn, 'TRNTYPE')
         dtposted = extract_ofx_field(stmttrn, 'DTPOSTED')
         trnamt = extract_ofx_field(stmttrn, 'TRNAMT')
@@ -64,16 +191,13 @@ def parse_ofx_content(ofx_text):
         if not (dtposted and trnamt and name):
             continue
 
-        # Parse date
         date_str = format_ofx_date(dtposted)
 
-        # Parse amount
         try:
             amount = float(trnamt)
         except:
             continue
 
-        # Determine if income or expense
         amount_in = 0
         amount_out = 0
         if amount > 0:
@@ -81,7 +205,6 @@ def parse_ofx_content(ofx_text):
         else:
             amount_out = abs(amount)
 
-        # Build description
         description = name
         if memo:
             description = f"{name} - {memo}"
@@ -145,7 +268,7 @@ def save_transactions():
 
         client = get_sheets_client()
         if not client:
-            return jsonify({'success': False, 'error': 'Google Sheets authentication failed. Create creds.json file.'})
+            return jsonify({'success': False, 'error': 'Google Sheets authentication failed. Check GOOGLE_CREDENTIALS secret.'})
 
         sheet = client.open_by_key(SHEET_ID).worksheet('Transactions')
 
