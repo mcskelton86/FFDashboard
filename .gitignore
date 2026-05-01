@@ -1,0 +1,14 @@
+# Credentials
+creds.json
+*-credentials.json
+household-finance-*.json
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS
+.DS_Store
