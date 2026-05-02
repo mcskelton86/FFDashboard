@@ -439,13 +439,17 @@ def get_all_payslips():
         return []
 
 def get_this_month_summary():
-    """Get summary for current month including transactions and payslips"""
+    """Get summary for the most recent complete month (previous calendar month).
+    We don't have a live bank feed so the current month is always partial — show
+    last month by default."""
     transactions = get_all_transactions()
     payslips = get_all_payslips()
 
     now = datetime.now()
-    current_month = now.strftime('%B')
-    current_year = now.strftime('%Y')
+    first_of_this_month = now.replace(day=1)
+    last_month_date = first_of_this_month - timedelta(days=1)
+    current_month = last_month_date.strftime('%B')
+    current_year = last_month_date.strftime('%Y')
 
     total_in = 0
     total_out = 0
