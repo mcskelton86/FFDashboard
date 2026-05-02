@@ -263,9 +263,36 @@ def save_transactions():
 
         sheet = client.open_by_key(SHEET_ID).worksheet('Transactions')
 
+        # Build a set of existing transaction signatures for dedup.
+        # Signature = date | description | amountOut | amountIn (normalised).
+        existing_records = sheet.get_all_records()
+        def _sig(date, desc, out, inn):
+            def _num(v):
+                try:
+                    return f'{float(v or 0):.2f}'
+                except (TypeError, ValueError):
+                    return '0.00'
+            return f"{(date or '').strip()}|{(desc or '').strip().lower()}|{_num(out)}|{_num(inn)}"
+
+        existing_sigs = set()
+        for r in existing_records:
+            existing_sigs.add(_sig(
+                r.get('Date'),
+                r.get('Description'),
+                r.get('Amount Out'),
+                r.get('Amount In'),
+            ))
+
         saved_count = 0
+        skipped_count = 0
+        rows_to_append = []
         for txn in transactions:
-            row = [
+            sig = _sig(txn['date'], txn['description'], txn['amountOut'], txn['amountIn'])
+            if sig in existing_sigs:
+                skipped_count += 1
+                continue
+            existing_sigs.add(sig)  # also dedup within this batch
+            rows_to_append.append([
                 txn['date'],
                 txn['description'],
                 txn['amountOut'],
@@ -275,13 +302,20 @@ def save_transactions():
                 datetime.now().strftime('%Y'),
                 'OFX Import',
                 datetime.now().strftime('%d/%m/%Y')
-            ]
-            sheet.append_row(row)
+            ])
             saved_count += 1
 
+        if rows_to_append:
+            sheet.append_rows(rows_to_append)
+
+        msg = f'Saved {saved_count} transactions'
+        if skipped_count:
+            msg += f', skipped {skipped_count} duplicate{"s" if skipped_count != 1 else ""}'
         return jsonify({
             'success': True,
-            'message': f'Saved {saved_count} transactions'
+            'message': msg,
+            'saved': saved_count,
+            'skipped': skipped_count
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
