@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>OFX Statement Importer</title>
+  <title>Statement Importer</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -192,23 +192,20 @@
 <body>
   <div class="container">
     <div class="header">
-      <h1>💰 OFX Statement Importer</h1>
-      <p>Import bank transactions from OFX files</p>
+      <h1>💰 Statement Importer</h1>
+      <p>Import bank transactions from a PDF statement</p>
       <a href="/" style="display: inline-block; margin-top: 12px; color: white; text-decoration: none; font-size: 14px; opacity: 0.85;">← Back to Dashboard</a>
     </div>
-    
+
     <div class="content">
       <div id="message" class="message"></div>
-      
+
       <div id="uploadSection" class="upload-section">
         <h2>📋 Upload Statement</h2>
-        <p>OFX file (desktop banking export) or PDF (Nationwide app statement)</p>
-        <input type="file" id="ofxFile" accept=".ofx,.txt,.pdf">
+        <p>PDF statement from your Nationwide app</p>
+        <input type="file" id="ofxFile" accept=".pdf">
         <br>
-        <p style="font-size: 12px; color: #999;">OR paste OFX content below:</p>
-        <textarea id="ofxPaste" placeholder="Paste OFX content here..."></textarea>
-        <br>
-        <button onclick="parseStatement()">Parse Statement</button>
+        <button onclick="parseStatement()">Upload Statement</button>
       </div>
       
       <div id="loading" class="loading">
@@ -261,59 +258,24 @@
     
     function parseStatement() {
       const file = document.getElementById('ofxFile').files[0];
-
-      if (file) {
-        const isPdf = file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
-        if (isPdf) {
-          sendPdfRequest(file);
-          return;
-        }
-        const reader = new FileReader();
-        reader.onload = (e) => sendOfxRequest(e.target.result);
-        reader.readAsText(file);
+      if (!file) {
+        showMessage('Choose a PDF statement to upload', 'error');
         return;
       }
-
-      const content = document.getElementById('ofxPaste').value;
-      if (!content) {
-        showMessage('Upload a file or paste OFX content', 'error');
-        return;
-      }
-      sendOfxRequest(content);
-    }
-
-    function handleParseResponse(data) {
-      document.getElementById('loading').classList.remove('active');
-      if (data.success) {
-        currentTransactions = data.transactions;
-        displayReview(data.transactions, data.count);
-      } else {
-        showMessage('Error: ' + data.error, 'error');
-      }
-    }
-
-    function sendOfxRequest(content) {
-      document.getElementById('loading').classList.add('active');
-      fetch('/parse-ofx', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: content })
-      })
-      .then(r => r.json())
-      .then(handleParseResponse)
-      .catch(e => {
-        document.getElementById('loading').classList.remove('active');
-        showMessage('Error: ' + e.message, 'error');
-      });
-    }
-
-    function sendPdfRequest(file) {
       document.getElementById('loading').classList.add('active');
       const fd = new FormData();
       fd.append('file', file);
       fetch('/parse-pdf', { method: 'POST', body: fd })
         .then(r => r.json())
-        .then(handleParseResponse)
+        .then(data => {
+          document.getElementById('loading').classList.remove('active');
+          if (data.success) {
+            currentTransactions = data.transactions;
+            displayReview(data.transactions, data.count);
+          } else {
+            showMessage('Error: ' + data.error, 'error');
+          }
+        })
         .catch(e => {
           document.getElementById('loading').classList.remove('active');
           showMessage('Error: ' + e.message, 'error');
@@ -387,7 +349,6 @@
       document.getElementById('reviewSection').classList.remove('active');
       document.getElementById('finishedSection').style.display = 'none';
       document.getElementById('ofxFile').value = '';
-      document.getElementById('ofxPaste').value = '';
       currentTransactions = [];
     }
   </script>

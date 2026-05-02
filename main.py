@@ -40,63 +40,7 @@ def get_sheets_client():
     except:
         return None
 
-# ===== OFX PARSING =====
-
-def parse_ofx_content(ofx_text):
-    """Parse OFX format and extract transactions"""
-    transactions = []
-
-    # Find all STMTTRN blocks
-    pattern = r'<STMTTRN>.*?</STMTTRN>'
-    matches = re.finditer(pattern, ofx_text, re.DOTALL)
-
-    for match in matches:
-        stmttrn = match.group(0)
-
-        # Extract transaction details
-        trntype = extract_ofx_field(stmttrn, 'TRNTYPE')
-        dtposted = extract_ofx_field(stmttrn, 'DTPOSTED')
-        trnamt = extract_ofx_field(stmttrn, 'TRNAMT')
-        name = extract_ofx_field(stmttrn, 'NAME')
-        memo = extract_ofx_field(stmttrn, 'MEMO')
-        fitid = extract_ofx_field(stmttrn, 'FITID')
-
-        if not (dtposted and trnamt and name):
-            continue
-
-        # Parse date
-        date_str = format_ofx_date(dtposted)
-
-        # Parse amount
-        try:
-            amount = float(trnamt)
-        except:
-            continue
-
-        # Determine if income or expense
-        amount_in = 0
-        amount_out = 0
-        if amount > 0:
-            amount_in = amount
-        else:
-            amount_out = abs(amount)
-
-        # Build description
-        description = name
-        if memo:
-            description = f"{name} - {memo}"
-
-        transactions.append({
-            'date': date_str,
-            'description': description[:100],
-            'amountOut': round(amount_out, 2),
-            'amountIn': round(amount_in, 2),
-            'category': categorize_transaction(description, amount > 0),
-            'fitid': fitid or '',
-            'keepUncategorized': False
-        })
-
-    return transactions
+# ===== STATEMENT PARSING =====
 
 def parse_nationwide_pdf(pdf_bytes):
     """Parse a Nationwide credit card / bank statement PDF.
@@ -152,22 +96,6 @@ def parse_nationwide_pdf(pdf_bytes):
                 })
 
     return transactions
-
-def extract_ofx_field(text, field_name):
-    """Extract a field value from OFX text"""
-    pattern = f'<{field_name}>([^<]+)</{field_name}>'
-    match = re.search(pattern, text)
-    return match.group(1).strip() if match else ''
-
-def format_ofx_date(ofx_date):
-    """Convert OFX date format to readable format"""
-    try:
-        # Handle both YYYYMMDD and longer formats with timestamps
-        date_part = ofx_date[:8]
-        dt = datetime.strptime(date_part, '%Y%m%d')
-        return dt.strftime('%d %b %Y')
-    except:
-        return ofx_date
 
 def normalize_date(date_str):
     """Normalize date from various formats to 'DD Mmm YYYY'"""
@@ -285,28 +213,6 @@ def dashboard():
 def payslip_review():
     return render_template('payslip_review.html')
 
-@app.route('/parse-ofx', methods=['POST'])
-def parse_ofx():
-    try:
-        data = request.json
-        ofx_content = data.get('content', '')
-
-        if not ofx_content:
-            return jsonify({'success': False, 'error': 'No content provided'})
-
-        transactions = parse_ofx_content(ofx_content)
-
-        if not transactions:
-            return jsonify({'success': False, 'error': 'No transactions found in OFX file'})
-
-        return jsonify({
-            'success': True,
-            'transactions': transactions,
-            'count': len(transactions)
-        })
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
-
 @app.route('/parse-pdf', methods=['POST'])
 def parse_pdf():
     try:
@@ -404,7 +310,7 @@ def save_transactions():
                 txn['category'],
                 datetime.now().strftime('%B'),
                 datetime.now().strftime('%Y'),
-                'OFX Import',
+                'PDF Import',
                 datetime.now().strftime('%d/%m/%Y'),
                 txn.get('fitid', '')
             ])
