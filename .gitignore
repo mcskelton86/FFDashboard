@@ -13,5 +13,10 @@ venv/
 # OS
 .DS_Store
 
-# Personal statements
+# Personal statements / screenshots / images
 *.pdf
+*.jpg
+*.jpeg
+*.png
+*.heic
+sample-*
