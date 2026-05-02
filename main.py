@@ -42,60 +42,197 @@ def get_sheets_client():
 
 # ===== STATEMENT PARSING =====
 
-def parse_nationwide_pdf(pdf_bytes):
-    """Parse a Nationwide credit card / bank statement PDF.
+_MONTH_ABBREVS = {'Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'}
+_AMOUNT_RE = re.compile(r'^-?[\d,]+\.\d{2}$')
 
-    Each transaction line on the statement is:
-        DD/MM/YY REFNO DESCRIPTION £AMOUNT
-    where REFNO is the bank's unique reference (we use this as the FITID).
+def _parse_credit_card_pdf(pdf):
+    """Nationwide credit card statement: lines look like
+        DD/MM/YY REFNO DESCRIPTION £AMOUNT [CR]
+    REFNO is the bank's unique reference and is stored as FITID.
     """
-    import pdfplumber
-    import io
-
     transactions = []
     line_pattern = re.compile(
         r'^(\d{2}/\d{2}/\d{2})\s+(\d+)\s+(.+?)\s+(-?)£([\d,]+\.\d{2})\s*(CR)?$'
     )
+    for page in pdf.pages:
+        text = page.extract_text() or ''
+        for line in text.split('\n'):
+            line = line.strip()
+            m = line_pattern.match(line)
+            if not m:
+                continue
+            date_raw, ref_no, description, neg_sign, amount_str, cr_marker = m.groups()
+            try:
+                amount = float(amount_str.replace(',', ''))
+            except ValueError:
+                continue
+            is_credit = bool(cr_marker) or bool(neg_sign)
+            try:
+                parsed_date = datetime.strptime(date_raw, '%d/%m/%y')
+                date_str = parsed_date.strftime('%d %b %Y')
+            except ValueError:
+                date_str = date_raw
+            transactions.append({
+                'date': date_str,
+                'description': description.strip()[:100],
+                'amountOut': 0 if is_credit else round(amount, 2),
+                'amountIn': round(amount, 2) if is_credit else 0,
+                'category': categorize_transaction(description, is_credit),
+                'fitid': ref_no,
+                'keepUncategorized': False,
+            })
+    return transactions
 
-    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-        for page in pdf.pages:
-            text = page.extract_text() or ''
-            for line in text.split('\n'):
-                line = line.strip()
-                m = line_pattern.match(line)
-                if not m:
-                    continue
-                date_raw, ref_no, description, neg_sign, amount_str, cr_marker = m.groups()
+def _parse_current_account_pdf(pdf):
+    """Nationwide FlexDirect (current account) statement.
+
+    Layout has columns: Date | Description | £Out | £In | £Balance, and
+    descriptions span multiple lines. We use word x-coordinates to assign
+    amounts to columns since the date-only inheritance and multi-line
+    descriptions defeat plain regex parsing.
+
+    No FITID is supplied by the bank in this format, so dedup falls back to
+    date+description+amount.
+    """
+    transactions = []
+
+    # Statement year — used to qualify dates like '25 Feb' that lack a year.
+    statement_year = None
+    for page in pdf.pages:
+        text = page.extract_text() or ''
+        m = re.search(r'Statementdate:?\s+\d{1,2}\s+\w+\s+(\d{4})', text)
+        if m:
+            statement_year = int(m.group(1))
+            break
+    if statement_year is None:
+        statement_year = datetime.now().year
+
+    cur_date = None
+
+    for page in pdf.pages:
+        text = page.extract_text() or ''
+        # Skip back-of-statement boilerplate pages (no transaction header).
+        if 'Description' not in text or '£Out' not in text:
+            continue
+
+        words = page.extract_words(keep_blank_chars=False)
+
+        # Find this page's column header positions so we can bucket amount
+        # words even if margins differ slightly between pages.
+        col_centers = {}
+        for w in words:
+            t = w['text']
+            if t in ('£Out', '£In', '£Balance'):
+                col_centers[t] = (w['x0'] + w['x1']) / 2
+        # Fallbacks if a header is missing (e.g. continuation page).
+        col_centers.setdefault('£Out', 295.0)
+        col_centers.setdefault('£In', 350.0)
+        col_centers.setdefault('£Balance', 410.0)
+
+        # Reset continuation tracking per page so trailing text on a page
+        # cannot leak into the next page's first transaction.
+        last_txn = None
+
+        # Group words into lines by their top-coord.
+        lines = {}
+        for w in words:
+            # Ignore right-margin metadata column (averages, BIC, IBAN, etc.)
+            if w['x0'] >= 443:
+                continue
+            k = round(w['top'], 0)
+            lines.setdefault(k, []).append(w)
+
+        for top in sorted(lines.keys()):
+            line_words = sorted(lines[top], key=lambda w: w['x0'])
+            if not line_words:
+                continue
+            texts = [w['text'] for w in line_words]
+            joined = ' '.join(texts)
+
+            # Skip header / metadata rows.
+            if any(t in texts for t in ('Description', '£Out', '£In', '£Balance', 'Date')):
+                continue
+            if any(s in joined for s in ('Statementdate', 'Sortcode', 'Accountno',
+                                          'Statementno', 'Startbalance', 'Endbalance',
+                                          'transactions(continued)', 'Balance from statement')):
+                continue
+
+            # Detect leading date: '<day-num> <Mon>'.
+            desc_start_idx = 0
+            if (len(line_words) >= 2 and line_words[0]['text'].isdigit()
+                    and line_words[1]['text'] in _MONTH_ABBREVS):
+                day = int(line_words[0]['text'])
+                mon = line_words[1]['text']
                 try:
-                    amount = float(amount_str.replace(',', ''))
+                    cur_date = datetime.strptime(f'{day} {mon} {statement_year}', '%d %b %Y')
                 except ValueError:
+                    pass
+                desc_start_idx = 2
+
+            # Bucket each remaining word: amounts go to the nearest of Out/In/Balance
+            # column centers; everything else is part of the description.
+            desc_words = []
+            out_amt = in_amt = bal_amt = None
+            for w in line_words[desc_start_idx:]:
+                txt = w['text']
+                if _AMOUNT_RE.match(txt):
+                    centre = (w['x0'] + w['x1']) / 2
+                    nearest = min(col_centers.items(), key=lambda kv: abs(centre - kv[1]))[0]
+                    val = float(txt.replace(',', ''))
+                    if nearest == '£Out':
+                        out_amt = val
+                    elif nearest == '£In':
+                        in_amt = val
+                    else:
+                        bal_amt = val
+                else:
+                    desc_words.append(txt)
+
+            desc = ' '.join(desc_words).strip()
+
+            # Drop "Effective Date ..." metadata lines outright.
+            if desc.startswith('Effective Date'):
+                continue
+
+            if out_amt is not None or in_amt is not None:
+                if cur_date is None:
                     continue
-
-                # On a credit card statement, "CR" or a leading minus marks a
-                # credit (money in / payment received). Everything else is a
-                # charge (money out).
-                is_credit = bool(cr_marker) or bool(neg_sign)
-                amount_in = amount if is_credit else 0
-                amount_out = 0 if is_credit else amount
-
-                # Convert DD/MM/YY -> DD Mmm YYYY
-                try:
-                    parsed_date = datetime.strptime(date_raw, '%d/%m/%y')
-                    date_str = parsed_date.strftime('%d %b %Y')
-                except ValueError:
-                    date_str = date_raw
-
-                transactions.append({
-                    'date': date_str,
-                    'description': description.strip()[:100],
-                    'amountOut': round(amount_out, 2),
-                    'amountIn': round(amount_in, 2),
-                    'category': categorize_transaction(description, is_credit),
-                    'fitid': ref_no,
-                    'keepUncategorized': False
-                })
+                txn = {
+                    'date': cur_date.strftime('%d %b %Y'),
+                    'description': desc[:120],
+                    'amountOut': round(out_amt, 2) if out_amt else 0,
+                    'amountIn': round(in_amt, 2) if in_amt else 0,
+                    'fitid': '',
+                    'keepUncategorized': False,
+                }
+                txn['category'] = categorize_transaction(desc, txn['amountIn'] > 0)
+                transactions.append(txn)
+                last_txn = txn
+            elif desc and last_txn is not None:
+                # Continuation line (description spans multiple rows).
+                last_txn['description'] = (last_txn['description'] + ' ' + desc).strip()[:120]
+                # Re-categorise with the now-richer description.
+                last_txn['category'] = categorize_transaction(
+                    last_txn['description'], last_txn['amountIn'] > 0
+                )
 
     return transactions
+
+def parse_nationwide_pdf(pdf_bytes):
+    """Parse a Nationwide statement PDF — credit card or current account.
+
+    Detects the statement type from the page text and dispatches to the right
+    parser. Both produce the same transaction shape.
+    """
+    import pdfplumber
+    import io
+
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        first_page_text = (pdf.pages[0].extract_text() or '') if pdf.pages else ''
+        if 'Credit Card Statement' in first_page_text:
+            return _parse_credit_card_pdf(pdf)
+        # FlexDirect / current account
+        return _parse_current_account_pdf(pdf)
 
 def normalize_date(date_str):
     """Normalize date from various formats to 'DD Mmm YYYY'"""
