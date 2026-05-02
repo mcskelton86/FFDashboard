@@ -138,12 +138,9 @@ def categorize_transaction(description, is_income=False):
     """Categorize transaction based on description"""
     desc_upper = description.upper()
 
-    # Income categorization - check for work locations first
+    # Any positive-amount transaction defaults to Income.
     if is_income:
-        income_keywords = ['MONKEY', 'CAFE', 'OLD SCHOOL']
-        for keyword in income_keywords:
-            if keyword in desc_upper:
-                return 'Income'
+        return 'Income'
 
     # Expense categorization
     categories = {
