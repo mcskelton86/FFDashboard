@@ -59,6 +59,7 @@ def parse_ofx_content(ofx_text):
         trnamt = extract_ofx_field(stmttrn, 'TRNAMT')
         name = extract_ofx_field(stmttrn, 'NAME')
         memo = extract_ofx_field(stmttrn, 'MEMO')
+        fitid = extract_ofx_field(stmttrn, 'FITID')
 
         if not (dtposted and trnamt and name):
             continue
@@ -91,6 +92,7 @@ def parse_ofx_content(ofx_text):
             'amountOut': round(amount_out, 2),
             'amountIn': round(amount_in, 2),
             'category': categorize_transaction(description, amount > 0),
+            'fitid': fitid or '',
             'keepUncategorized': False
         })
 
@@ -260,18 +262,27 @@ def save_transactions():
 
         sheet = client.open_by_key(SHEET_ID).worksheet('Transactions')
 
-        # Signature = date | description | amountOut | amountIn (normalised).
-        def _sig(date, desc, out, inn):
-            def _num(v):
-                try:
-                    return f'{float(v or 0):.2f}'
-                except (TypeError, ValueError):
-                    return '0.00'
+        # Ensure the sheet has a FITID column (the bank's unique transaction ID,
+        # which is the most reliable dedup key).
+        header = sheet.row_values(1)
+        if 'FITID' not in header:
+            sheet.update_cell(1, len(header) + 1, 'FITID')
+            header = sheet.row_values(1)
+
+        # Signature: prefer FITID alone; fall back to date|desc|out|in for rows
+        # without a FITID (e.g. older imports, or banks that don't supply it).
+        def _num(v):
+            try:
+                return f'{float(v or 0):.2f}'
+            except (TypeError, ValueError):
+                return '0.00'
+
+        def _sig(date, desc, out, inn, fitid):
+            if fitid:
+                return f'fitid:{str(fitid).strip()}'
             return f"{(date or '').strip()}|{(desc or '').strip().lower()}|{_num(out)}|{_num(inn)}"
 
-        # First, clean any duplicates already in the sheet. Records are 0-indexed
-        # here; sheet rows are 1-indexed with row 1 = header, so row N in the
-        # sheet corresponds to records[N-2].
+        # Clean duplicates already in the sheet.
         existing_records = sheet.get_all_records()
         seen = {}
         rows_to_delete = []  # 1-indexed sheet row numbers
@@ -281,13 +292,13 @@ def save_transactions():
                 r.get('Description'),
                 r.get('Amount Out'),
                 r.get('Amount In'),
+                r.get('FITID'),
             )
             if sig in seen:
-                rows_to_delete.append(idx + 2)  # account for header
+                rows_to_delete.append(idx + 2)
             else:
                 seen[sig] = idx + 2
 
-        # Delete from the bottom so row indices above stay valid.
         cleaned_count = 0
         for row_num in sorted(rows_to_delete, reverse=True):
             sheet.delete_rows(row_num)
@@ -299,11 +310,11 @@ def save_transactions():
         skipped_count = 0
         rows_to_append = []
         for txn in transactions:
-            sig = _sig(txn['date'], txn['description'], txn['amountOut'], txn['amountIn'])
+            sig = _sig(txn['date'], txn['description'], txn['amountOut'], txn['amountIn'], txn.get('fitid'))
             if sig in existing_sigs:
                 skipped_count += 1
                 continue
-            existing_sigs.add(sig)  # also dedup within this batch
+            existing_sigs.add(sig)
             rows_to_append.append([
                 txn['date'],
                 txn['description'],
@@ -313,7 +324,8 @@ def save_transactions():
                 datetime.now().strftime('%B'),
                 datetime.now().strftime('%Y'),
                 'OFX Import',
-                datetime.now().strftime('%d/%m/%Y')
+                datetime.now().strftime('%d/%m/%Y'),
+                txn.get('fitid', '')
             ])
             saved_count += 1
 
