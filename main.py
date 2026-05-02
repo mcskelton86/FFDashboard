@@ -446,23 +446,13 @@ def get_this_month_summary():
     transactions = get_all_transactions()
     payslips = get_all_payslips()
 
-    # Find the latest month that has at least one transaction
-    latest_date = None
-    for txn in transactions:
-        try:
-            txn_date = datetime.strptime(txn['date'], '%d %b %Y')
-            if latest_date is None or txn_date > latest_date:
-                latest_date = txn_date
-        except:
-            continue
-
-    if latest_date is None:
-        # No transactions at all — fall back to previous calendar month
-        now = datetime.now()
-        latest_date = now.replace(day=1) - timedelta(days=1)
-
-    current_month = latest_date.strftime('%B')
-    current_year = latest_date.strftime('%Y')
+    # Always show previous calendar month (we don't have a live bank feed,
+    # so the current month is incomplete — last month is the most recent
+    # complete view of household spend).
+    now = datetime.now()
+    last_month_date = now.replace(day=1) - timedelta(days=1)
+    current_month = last_month_date.strftime('%B')
+    current_year = last_month_date.strftime('%Y')
 
     total_in = 0
     total_out = 0
