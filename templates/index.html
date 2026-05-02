@@ -201,14 +201,14 @@
       <div id="message" class="message"></div>
       
       <div id="uploadSection" class="upload-section">
-        <h2>📋 Upload OFX File</h2>
-        <p>Export your statement as OFX from your bank</p>
-        <input type="file" id="ofxFile" accept=".ofx,.txt">
+        <h2>📋 Upload Statement</h2>
+        <p>OFX file (desktop banking export) or PDF (Nationwide app statement)</p>
+        <input type="file" id="ofxFile" accept=".ofx,.txt,.pdf">
         <br>
         <p style="font-size: 12px; color: #999;">OR paste OFX content below:</p>
         <textarea id="ofxPaste" placeholder="Paste OFX content here..."></textarea>
         <br>
-        <button onclick="parseOFX()">Parse OFX</button>
+        <button onclick="parseStatement()">Parse Statement</button>
       </div>
       
       <div id="loading" class="loading">
@@ -259,52 +259,65 @@
       setTimeout(() => msg.className = 'message', 5000);
     }
     
-    function parseOFX() {
-      let content = '';
-      
-      // Try file input first
+    function parseStatement() {
       const file = document.getElementById('ofxFile').files[0];
+
       if (file) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          content = e.target.result;
-          sendParseRequest(content);
-        };
-        reader.readAsText(file);
-      } else {
-        // Try textarea
-        content = document.getElementById('ofxPaste').value;
-        if (!content) {
-          showMessage('Upload a file or paste OFX content', 'error');
+        const isPdf = file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
+        if (isPdf) {
+          sendPdfRequest(file);
           return;
         }
-        sendParseRequest(content);
+        const reader = new FileReader();
+        reader.onload = (e) => sendOfxRequest(e.target.result);
+        reader.readAsText(file);
+        return;
+      }
+
+      const content = document.getElementById('ofxPaste').value;
+      if (!content) {
+        showMessage('Upload a file or paste OFX content', 'error');
+        return;
+      }
+      sendOfxRequest(content);
+    }
+
+    function handleParseResponse(data) {
+      document.getElementById('loading').classList.remove('active');
+      if (data.success) {
+        currentTransactions = data.transactions;
+        displayReview(data.transactions, data.count);
+      } else {
+        showMessage('Error: ' + data.error, 'error');
       }
     }
-    
-    function sendParseRequest(content) {
+
+    function sendOfxRequest(content) {
       document.getElementById('loading').classList.add('active');
-      
       fetch('/parse-ofx', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: content })
       })
       .then(r => r.json())
-      .then(data => {
-        document.getElementById('loading').classList.remove('active');
-        
-        if (data.success) {
-          currentTransactions = data.transactions;
-          displayReview(data.transactions, data.count);
-        } else {
-          showMessage('Error: ' + data.error, 'error');
-        }
-      })
+      .then(handleParseResponse)
       .catch(e => {
         document.getElementById('loading').classList.remove('active');
         showMessage('Error: ' + e.message, 'error');
       });
+    }
+
+    function sendPdfRequest(file) {
+      document.getElementById('loading').classList.add('active');
+      const fd = new FormData();
+      fd.append('file', file);
+      fetch('/parse-pdf', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(handleParseResponse)
+        .catch(e => {
+          document.getElementById('loading').classList.remove('active');
+          showMessage('Error: ' + e.message, 'error');
+        });
     }
     
     function displayReview(transactions, count) {

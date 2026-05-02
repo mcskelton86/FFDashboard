@@ -98,6 +98,61 @@ def parse_ofx_content(ofx_text):
 
     return transactions
 
+def parse_nationwide_pdf(pdf_bytes):
+    """Parse a Nationwide credit card / bank statement PDF.
+
+    Each transaction line on the statement is:
+        DD/MM/YY REFNO DESCRIPTION £AMOUNT
+    where REFNO is the bank's unique reference (we use this as the FITID).
+    """
+    import pdfplumber
+    import io
+
+    transactions = []
+    line_pattern = re.compile(
+        r'^(\d{2}/\d{2}/\d{2})\s+(\d+)\s+(.+?)\s+(-?)£([\d,]+\.\d{2})\s*(CR)?$'
+    )
+
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text() or ''
+            for line in text.split('\n'):
+                line = line.strip()
+                m = line_pattern.match(line)
+                if not m:
+                    continue
+                date_raw, ref_no, description, neg_sign, amount_str, cr_marker = m.groups()
+                try:
+                    amount = float(amount_str.replace(',', ''))
+                except ValueError:
+                    continue
+
+                # On a credit card statement, "CR" or a leading minus marks a
+                # credit (money in / payment received). Everything else is a
+                # charge (money out).
+                is_credit = bool(cr_marker) or bool(neg_sign)
+                amount_in = amount if is_credit else 0
+                amount_out = 0 if is_credit else amount
+
+                # Convert DD/MM/YY -> DD Mmm YYYY
+                try:
+                    parsed_date = datetime.strptime(date_raw, '%d/%m/%y')
+                    date_str = parsed_date.strftime('%d %b %Y')
+                except ValueError:
+                    date_str = date_raw
+
+                transactions.append({
+                    'date': date_str,
+                    'description': description.strip()[:100],
+                    'amountOut': round(amount_out, 2),
+                    'amountIn': round(amount_in, 2),
+                    'category': categorize_transaction(description, is_credit),
+                    'fitid': ref_no,
+                    'keepUncategorized': False
+                })
+
+    return transactions
+
 def extract_ofx_field(text, field_name):
     """Extract a field value from OFX text"""
     pattern = f'<{field_name}>([^<]+)</{field_name}>'
@@ -239,6 +294,27 @@ def parse_ofx():
         if not transactions:
             return jsonify({'success': False, 'error': 'No transactions found in OFX file'})
 
+        return jsonify({
+            'success': True,
+            'transactions': transactions,
+            'count': len(transactions)
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/parse-pdf', methods=['POST'])
+def parse_pdf():
+    try:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': 'No file uploaded'})
+        f = request.files['file']
+        pdf_bytes = f.read()
+        if not pdf_bytes:
+            return jsonify({'success': False, 'error': 'Empty file'})
+
+        transactions = parse_nationwide_pdf(pdf_bytes)
+        if not transactions:
+            return jsonify({'success': False, 'error': 'No transactions found in PDF'})
         return jsonify({
             'success': True,
             'transactions': transactions,
