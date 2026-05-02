@@ -652,6 +652,9 @@
       const payslips = data.payslips;
 
       // Update summary cards
+      const monthLbl = summaryData.month_label || 'Last Month';
+      document.getElementById('incomeLabel').textContent = monthLbl + ' Income';
+      document.getElementById('expensesLabel').textContent = monthLbl + ' Expenses';
       document.getElementById('income').textContent = formatCurrency(summaryData.total_in);
       document.getElementById('expenses').textContent = formatCurrency(summaryData.total_out);
       document.getElementById('net').textContent = formatCurrency(summaryData.net);

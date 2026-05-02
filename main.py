@@ -439,17 +439,30 @@ def get_all_payslips():
         return []
 
 def get_this_month_summary():
-    """Get summary for the most recent complete month (previous calendar month).
-    We don't have a live bank feed so the current month is always partial — show
-    last month by default."""
+    """Get summary for the most recent month that has transaction data.
+    We don't have a live bank feed, so rather than the literal current/previous
+    calendar month (which may be empty), fall back to the latest month that
+    actually has transactions in the sheet."""
     transactions = get_all_transactions()
     payslips = get_all_payslips()
 
-    now = datetime.now()
-    first_of_this_month = now.replace(day=1)
-    last_month_date = first_of_this_month - timedelta(days=1)
-    current_month = last_month_date.strftime('%B')
-    current_year = last_month_date.strftime('%Y')
+    # Find the latest month that has at least one transaction
+    latest_date = None
+    for txn in transactions:
+        try:
+            txn_date = datetime.strptime(txn['date'], '%d %b %Y')
+            if latest_date is None or txn_date > latest_date:
+                latest_date = txn_date
+        except:
+            continue
+
+    if latest_date is None:
+        # No transactions at all — fall back to previous calendar month
+        now = datetime.now()
+        latest_date = now.replace(day=1) - timedelta(days=1)
+
+    current_month = latest_date.strftime('%B')
+    current_year = latest_date.strftime('%Y')
 
     total_in = 0
     total_out = 0
@@ -483,6 +496,7 @@ def get_this_month_summary():
     safe_to_spend = max(0, net)
 
     return {
+        'month_label': f'{current_month} {current_year}',
         'total_in': round(total_in, 2),
         'total_out': round(total_out, 2),
         'net': round(net, 2),
@@ -588,6 +602,7 @@ def api_dashboard_data():
 
         return jsonify({
             'this_month': {
+                'month_label': summary['month_label'],
                 'total_in': summary['total_in'],
                 'total_out': summary['total_out'],
                 'net': summary['net'],
