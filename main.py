@@ -199,15 +199,20 @@ def categorize_transaction(description, is_income=False):
     if is_income:
         return 'Income'
 
-    # Expense categorization
+    # Expense categorization. Order matters — first match wins, so put more
+    # specific categories before broader ones.
     categories = {
-        'Groceries': ['TESCO', 'SAINSBURY', 'ASDA', 'MORRISONS', 'WAITROSE', 'LIDL', 'ALDI'],
+        'Eating Out': ['CAFE', 'COFFEE', 'COSTA', 'STARBUCKS', 'PUB', 'BAR ',
+                        'BREWHOUSE', 'RESTAURANT', 'MAYFLOWER', 'TRES BON',
+                        'STONEGATE', 'MCDONALD', 'GREGGS', 'PIZZA', 'KFC',
+                        'NANDOS', 'WAGAMAMA', 'BURGER'],
+        'Groceries': ['TESCO', 'SAINSBURY', 'ASDA', 'MORRISONS', 'WAITROSE', 'LIDL', 'ALDI', 'CO-OP', 'COOP', 'M&S FOOD'],
         'Shopping': ['AMAZON', 'EBAY', 'ARGOS', 'JOHN LEWIS', 'MARKS', 'DEBENHAMS'],
         'Utilities': ['OCTOPUS', 'WATER', 'GAS', 'ELECTRIC', 'EDFENERGY'],
-        'Entertainment': ['MONKEY BREWHOUSE', 'CINEMA', 'NETFLIX', 'SPOTIFY', 'BT SPORT', 'NOW TV'],
-        'Transport': ['UBER', 'TFL', 'LYMINGTON', 'PETROL', 'FUEL', 'SHELL', 'BP'],
-        'Subscriptions': ['APPLE', 'MICROSOFT', 'PARAMOUNT', 'CRUNCHYROLL', 'NOW', 'ADOBE', 'SLACK'],
-        'Phone & Internet': ['EE', 'VODAFONE', 'O2', 'TROOLI', 'BT', 'VIRGIN'],
+        'Entertainment': ['CINEMA', 'NETFLIX', 'SPOTIFY', 'BT SPORT', 'NOW TV'],
+        'Transport': ['UBER', 'TFL', 'SERVICE STATION', 'PETROL', 'FUEL', 'SHELL ', ' BP ', 'ESSO', 'WIGHTLINK', 'PAYBYPHONE'],
+        'Subscriptions': ['APPLE.COM', 'MICROSOFT', 'PARAMOUNT', 'CRUNCHYROLL', 'ADOBE', 'SLACK'],
+        'Phone & Internet': ['VODAFONE', 'TROOLI', 'VIRGIN MEDIA', 'SKY '],
         'Healthcare': ['SPECSAVERS', 'BOOTS', 'PHARMACY', 'DOCTOR', 'DENTIST', 'NHS'],
         'Council Tax': ['FOREST DC', 'COUNCIL'],
         'Housing': ['RENT', 'MORTGAGE', 'LANDLORD'],
