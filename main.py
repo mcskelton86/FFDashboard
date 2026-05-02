@@ -263,9 +263,7 @@ def save_transactions():
 
         sheet = client.open_by_key(SHEET_ID).worksheet('Transactions')
 
-        # Build a set of existing transaction signatures for dedup.
         # Signature = date | description | amountOut | amountIn (normalised).
-        existing_records = sheet.get_all_records()
         def _sig(date, desc, out, inn):
             def _num(v):
                 try:
@@ -274,14 +272,31 @@ def save_transactions():
                     return '0.00'
             return f"{(date or '').strip()}|{(desc or '').strip().lower()}|{_num(out)}|{_num(inn)}"
 
-        existing_sigs = set()
-        for r in existing_records:
-            existing_sigs.add(_sig(
+        # First, clean any duplicates already in the sheet. Records are 0-indexed
+        # here; sheet rows are 1-indexed with row 1 = header, so row N in the
+        # sheet corresponds to records[N-2].
+        existing_records = sheet.get_all_records()
+        seen = {}
+        rows_to_delete = []  # 1-indexed sheet row numbers
+        for idx, r in enumerate(existing_records):
+            sig = _sig(
                 r.get('Date'),
                 r.get('Description'),
                 r.get('Amount Out'),
                 r.get('Amount In'),
-            ))
+            )
+            if sig in seen:
+                rows_to_delete.append(idx + 2)  # account for header
+            else:
+                seen[sig] = idx + 2
+
+        # Delete from the bottom so row indices above stay valid.
+        cleaned_count = 0
+        for row_num in sorted(rows_to_delete, reverse=True):
+            sheet.delete_rows(row_num)
+            cleaned_count += 1
+
+        existing_sigs = set(seen.keys())
 
         saved_count = 0
         skipped_count = 0
@@ -308,14 +323,17 @@ def save_transactions():
         if rows_to_append:
             sheet.append_rows(rows_to_append)
 
-        msg = f'Saved {saved_count} transactions'
+        msg_parts = [f'Saved {saved_count} transactions']
         if skipped_count:
-            msg += f', skipped {skipped_count} duplicate{"s" if skipped_count != 1 else ""}'
+            msg_parts.append(f'skipped {skipped_count} duplicate{"s" if skipped_count != 1 else ""} from upload')
+        if cleaned_count:
+            msg_parts.append(f'removed {cleaned_count} existing duplicate{"s" if cleaned_count != 1 else ""} from sheet')
         return jsonify({
             'success': True,
-            'message': msg,
+            'message': ', '.join(msg_parts),
             'saved': saved_count,
-            'skipped': skipped_count
+            'skipped': skipped_count,
+            'cleaned': cleaned_count
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
