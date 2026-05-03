@@ -50,7 +50,7 @@ CATEGORY_RULES = [
     (re.compile(r'NATIONWIDE\s*C/CARD|MEMBER\s*CREDIT\s*CARD', re.IGNORECASE), CC_PAYMENT),
     (re.compile(r'AQUASHORE', re.IGNORECASE), 'Rent'),
     (re.compile(r'NEW\s*FOREST\s*DC|\bFOREST\s*DC\b|NEWFOREST\.GOV|COUNCIL\s*TAX', re.IGNORECASE), 'Council Tax'),
-    (re.compile(r'SOUTHERN\s*WATER|\bWATER\s*BOARD\b', re.IGNORECASE), 'Water'),
+    (re.compile(r'SOUTHERN\s*WATER|SOUTH\s*WEST\s*WATER|THAMES\s*WATER|ANGLIAN\s*WATER|YORKSHIRE\s*WATER|WESSEX\s*WATER|\bWATER\s*BOARD\b', re.IGNORECASE), 'Water'),
     (re.compile(r'OCTOPUS\s*ENERGY|BRITISH\s*GAS|EDF\s*ENERGY|\bE\.?ON\b|SCOTTISH\s*POWER|BULB\s*ENERGY|OVO\s*ENERGY', re.IGNORECASE), 'Gas/Electric'),
     (re.compile(r'TROOLI', re.IGNORECASE), 'Internet'),
     (re.compile(r'EE\s*LIMITED|\bEE\s*MOBILE\b', re.IGNORECASE), 'Phones'),
@@ -70,6 +70,10 @@ INCOME_RULES = [
     (re.compile(r'HUMBUG', re.IGNORECASE), 'Matthew'),
     (re.compile(r'PULSE\s*WELLNESS', re.IGNORECASE), 'Matthew'),
     (re.compile(r'\b(?:WAGES|SALARY)\b', re.IGNORECASE), 'Matthew'),
+    # US→UK transfers from Matthew's own US accounts. Real money in; treated
+    # as Matthew's income for the savings/cashflow model.
+    (re.compile(r'\bMATTHEW\s+SKELTON\b', re.IGNORECASE), 'Matthew'),
+    (re.compile(r'\bRILEY\s+SKELTON\b', re.IGNORECASE), 'Riley'),
 ]
 
 
@@ -377,38 +381,64 @@ def save_transactions():
             except (TypeError, ValueError):
                 return '0.00'
 
-        def _sig(date, desc, out, inn, fitid):
-            if fitid:
-                return f'fitid:{str(fitid).strip()}'
+        def _base_sig(date, desc, out, inn):
             return f"{(date or '').strip()}|{(desc or '').strip().lower()}|{_num(out)}|{_num(inn)}"
 
         existing_records = sheet.get_all_records()
-        seen = {}
-        rows_to_delete = []
-        for idx, r in enumerate(existing_records):
-            sig = _sig(r.get('Date'), r.get('Description'),
-                       r.get('Amount Out'), r.get('Amount In'), r.get('FITID'))
-            if sig in seen:
-                rows_to_delete.append(idx + 2)
-            else:
-                seen[sig] = idx + 2
 
+        # FITID-based dedup (CC statements supply unique refs). Drop existing
+        # rows that have duplicate FITIDs in the sheet.
+        existing_fitids = set()
+        rows_to_delete = []
         cleaned_count = 0
+        for idx, r in enumerate(existing_records):
+            f = (r.get('FITID') or '').strip()
+            if f:
+                if f in existing_fitids:
+                    rows_to_delete.append(idx + 2)
+                else:
+                    existing_fitids.add(f)
         for row_num in sorted(rows_to_delete, reverse=True):
             sheet.delete_rows(row_num)
             cleaned_count += 1
+        if rows_to_delete:
+            del_set = set(rows_to_delete)
+            existing_records = [r for i, r in enumerate(existing_records) if (i + 2) not in del_set]
 
-        existing_sigs = set(seen.keys())
+        # Count existing non-FITID rows per base signature so we preserve
+        # legitimate identical transactions (e.g. two £595 college payments
+        # the same day): on re-upload we skip only the rows that already
+        # exist, not all matching rows.
+        existing_counts = {}
+        for r in existing_records:
+            if (r.get('FITID') or '').strip():
+                continue
+            sig = _base_sig(r.get('Date'), r.get('Description'),
+                            r.get('Amount Out'), r.get('Amount In'))
+            existing_counts[sig] = existing_counts.get(sig, 0) + 1
 
         saved_count = 0
         skipped_count = 0
+        upload_counts_seen = {}
         rows_to_append = []
         for txn in transactions:
-            sig = _sig(txn['date'], txn['description'], txn['amountOut'], txn['amountIn'], txn.get('fitid'))
-            if sig in existing_sigs:
-                skipped_count += 1
-                continue
-            existing_sigs.add(sig)
+            fitid = (txn.get('fitid') or '').strip()
+            if fitid:
+                if fitid in existing_fitids:
+                    skipped_count += 1
+                    continue
+                existing_fitids.add(fitid)
+            else:
+                sig = _base_sig(txn['date'], txn['description'],
+                                txn['amountOut'], txn['amountIn'])
+                # If the sheet already has N copies of this signature, skip
+                # the first N occurrences from the upload (those are the
+                # already-imported ones). Append the rest.
+                seen = upload_counts_seen.get(sig, 0)
+                upload_counts_seen[sig] = seen + 1
+                if seen < existing_counts.get(sig, 0):
+                    skipped_count += 1
+                    continue
             rows_to_append.append([
                 txn['date'],
                 txn['description'],
