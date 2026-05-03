@@ -4,5 +4,5 @@ google-auth==2.25.0
 google-auth-httplib2==0.2.0
 google-auth-oauthlib==1.1.0
 Pillow==10.0.0
-pytesseract==0.3.10
 pdfplumber==0.11.4
+requests==2.32.3

@@ -7,7 +7,6 @@ import os
 import json
 import base64
 from PIL import Image
-import pytesseract
 import io
 
 app = Flask(__name__)
@@ -293,44 +292,92 @@ def categorize_transaction(description, is_income=False):
 # ===== PAYSLIP HANDLING =====
 
 def parse_payslip_text(ocr_text):
-    """Extract income amount, hours, and date from OCR'd payslip text"""
+    """Extract net pay, gross pay, hours, and date from OCR'd payslip text.
+
+    Prefers labelled fields (Net Pay, Gross Pay, Payment Date) — falling back
+    to looser regexes if labels aren't found.
+    """
     result = {
-        'amount': None,
+        'amount': None,       # net pay (what hits the bank account)
+        'gross': None,
         'hours': None,
-        'date': None
+        'date': None,
+        'employer': None,
     }
 
-    # Extract income amount (look for patterns like "£1,234.56" or "1234.56")
-    amount_match = re.search(r'[£]?(\d{1,5}[,.]?\d{0,2})', ocr_text, re.IGNORECASE)
-    if amount_match:
-        amount_str = amount_match.group(1).replace(',', '')
+    def _money(s):
         try:
-            result['amount'] = float(amount_str)
-        except:
+            return float(s.replace(',', '').replace('£', '').replace('€', '').strip())
+        except (TypeError, ValueError):
+            return None
+
+    # Net Pay: £551.20  (or just "Net Pay 551.20")
+    m = re.search(r'Net\s*Pay[:\s]*[£€]?\s*([\d,]+\.\d{2})', ocr_text, re.IGNORECASE)
+    if m:
+        result['amount'] = _money(m.group(1))
+
+    m = re.search(r'Gross\s*Pay[:\s]*[£€]?\s*([\d,]+\.\d{2})', ocr_text, re.IGNORECASE)
+    if m:
+        result['gross'] = _money(m.group(1))
+
+    # Hours — supports "53.0000 hours", "40 hrs", "Regular Hours 53.00".
+    m = re.search(r'(\d{1,4}\.?\d*)\s*(?:hours?|hrs?)\b', ocr_text, re.IGNORECASE)
+    if m:
+        try:
+            result['hours'] = float(m.group(1))
+        except ValueError:
             pass
 
-    # Extract hours worked (look for patterns like "40 hours", "40hrs", etc.)
-    hours_match = re.search(r'(\d+\.?\d*)\s*(?:hours?|hrs?)', ocr_text, re.IGNORECASE)
-    if hours_match:
+    # Payment Date first; fall back to any DD/MM/YY-ish date.
+    m = re.search(r'Payment\s*Date[:\s]*(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})', ocr_text, re.IGNORECASE)
+    if not m:
+        m = re.search(r'\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b', ocr_text)
+    if m:
         try:
-            result['hours'] = float(hours_match.group(1))
-        except:
-            pass
-
-    # Extract date (look for DD/MM/YY format)
-    date_match = re.search(r'(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})', ocr_text)
-    if date_match:
-        try:
-            day, month, year = date_match.groups()
-            # Handle 2-digit year
+            day, month, year = m.groups()
             if len(year) == 2:
                 year = '20' + year
-            dt = datetime(int(year), int(month), int(day))
-            result['date'] = dt.strftime('%d %b %Y')
-        except:
+            result['date'] = datetime(int(year), int(month), int(day)).strftime('%d %b %Y')
+        except (ValueError, TypeError):
             pass
 
+    # Employer: line after "PAID BY" (lets us guess Person on save).
+    m = re.search(r'PAID\s*BY[\s:]*\n?([^\n]+)', ocr_text, re.IGNORECASE)
+    if m:
+        result['employer'] = m.group(1).strip()[:80]
+
     return result
+
+def ocr_via_ocrspace(image_bytes, filename):
+    """Send an image to the OCR.space API. Free tier: no setup needed for
+    light use with the public 'helloworld' key; for real use set the env var
+    OCR_SPACE_API_KEY to your own free key (25k requests/month).
+
+    Returns the raw extracted text, or raises Exception on failure.
+    """
+    import requests
+    api_key = os.environ.get('OCR_SPACE_API_KEY', 'helloworld')
+    resp = requests.post(
+        'https://api.ocr.space/parse/image',
+        files={'file': (filename or 'payslip.jpg', image_bytes)},
+        data={
+            'apikey': api_key,
+            'language': 'eng',
+            'OCREngine': '2',
+            'isTable': 'true',
+            'scale': 'true',
+        },
+        timeout=60,
+    )
+    resp.raise_for_status()
+    body = resp.json()
+    if body.get('IsErroredOnProcessing'):
+        msg = body.get('ErrorMessage') or body.get('ErrorDetails') or 'OCR error'
+        if isinstance(msg, list):
+            msg = '; '.join(msg)
+        raise RuntimeError(f'OCR.space: {msg}')
+    parts = [r.get('ParsedText', '') for r in body.get('ParsedResults', [])]
+    return '\n'.join(parts)
 
 # ===== API ROUTES =====
 
@@ -496,8 +543,10 @@ def upload_payslip():
             rgb_image.paste(image, mask=image.split()[-1] if image.mode == 'RGBA' else None)
             image = rgb_image
 
-        # Run OCR
-        ocr_text = pytesseract.image_to_string(image)
+        # Run OCR via OCR.space (cloud, no system deps).
+        ocr_buf = io.BytesIO()
+        image.save(ocr_buf, format='PNG')
+        ocr_text = ocr_via_ocrspace(ocr_buf.getvalue(), file.filename)
 
         # Extract payslip data
         extracted = parse_payslip_text(ocr_text)
