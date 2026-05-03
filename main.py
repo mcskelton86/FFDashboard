@@ -377,19 +377,29 @@ def ocr_via_ocrspace(image_bytes, filename):
     """
     import requests
     api_key = os.environ.get('OCR_SPACE_API_KEY', 'helloworld')
-    resp = requests.post(
-        'https://api.ocr.space/parse/image',
-        files={'file': (filename or 'payslip.jpg', image_bytes)},
-        data={
-            'apikey': api_key,
-            'language': 'eng',
-            'OCREngine': '2',
-            'isTable': 'true',
-            'scale': 'true',
-        },
-        timeout=60,
-    )
-    resp.raise_for_status()
+    last_err = None
+    for attempt in range(3):
+        try:
+            resp = requests.post(
+                'https://api.ocr.space/parse/image',
+                files={'file': (filename or 'payslip.jpg', image_bytes)},
+                data={
+                    'apikey': api_key,
+                    'language': 'eng',
+                    'OCREngine': '2',
+                    'isTable': 'true',
+                    'scale': 'true',
+                },
+                timeout=180,
+            )
+            resp.raise_for_status()
+            break
+        except requests.exceptions.RequestException as e:
+            last_err = e
+            if attempt == 2:
+                raise RuntimeError(f'OCR.space request failed after 3 tries: {e}')
+    else:
+        raise RuntimeError(f'OCR.space request failed: {last_err}')
     body = resp.json()
     if body.get('IsErroredOnProcessing'):
         msg = body.get('ErrorMessage') or body.get('ErrorDetails') or 'OCR error'
