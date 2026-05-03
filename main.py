@@ -603,6 +603,29 @@ def _income_in(txn):
     return amt
 
 
+def _income_effective_date(txn):
+    """The date used for grouping income into a 'pay month'.
+
+    Most paydays land on the calendar month the work was done in, but when
+    payday rolls past month-end (e.g. Riley's JC pay falls on the last
+    business day of the month — when that's a weekend, the payment lands
+    on the 1st-3rd of the next month), naive calendar grouping puts the
+    payment one month late. Treat any income credit dated 1-3 of a month
+    as belonging to the previous month for filtering purposes.
+
+    Returns the original parsed datetime, or a shifted one, or None.
+    """
+    d = _parse_date(txn.get('date'))
+    if not d:
+        return None
+    if not is_known_income(txn.get('description', '')):
+        return d
+    if d.day <= 3:
+        # Step into previous month: subtract enough days to cross the boundary.
+        return (d.replace(day=1) - timedelta(days=1))
+    return d
+
+
 def get_summary(period=''):
     """Summary for the given period.
     period: 'YYYY-MM' (specific month), 'YYYY' (full year), 'all', or '' (default = latest month with expenses).
@@ -648,16 +671,21 @@ def get_summary(period=''):
 
     for txn in transactions:
         d = _parse_date(txn['date'])
-        if not d or not _in_period(d):
+        if not d:
             continue
-        total_in += _income_in(txn)
-        out = _spend_out(txn)
-        total_out += out
-        if out > 0:
-            cat = txn.get('category') or 'Other'
-            if cat == CC_PAYMENT:
-                continue
-            by_category[cat] = by_category.get(cat, 0) + out
+        # Spending uses calendar date.
+        if _in_period(d):
+            out = _spend_out(txn)
+            total_out += out
+            if out > 0:
+                cat = txn.get('category') or 'Other'
+                if cat != CC_PAYMENT:
+                    by_category[cat] = by_category.get(cat, 0) + out
+        # Income uses pay-month effective date so end-of-month rollover
+        # doesn't shove a salary into the wrong month.
+        eff = _income_effective_date(txn)
+        if eff and _in_period(eff):
+            total_in += _income_in(txn)
 
     net = total_in - total_out
     return {
@@ -688,10 +716,14 @@ def get_12_month_trend():
         d = _parse_date(txn['date'])
         if not d:
             continue
-        key = d.strftime('%b %Y')
-        if key in months:
-            months[key]['income'] += _income_in(txn)
-            months[key]['expenses'] += _spend_out(txn)
+        cal_key = d.strftime('%b %Y')
+        if cal_key in months:
+            months[cal_key]['expenses'] += _spend_out(txn)
+        eff = _income_effective_date(txn)
+        if eff:
+            eff_key = eff.strftime('%b %Y')
+            if eff_key in months:
+                months[eff_key]['income'] += _income_in(txn)
 
     labels = list(months.keys())
     return {
@@ -813,11 +845,13 @@ def api_income():
     period = request.args.get('period', '').strip()
     transactions = get_all_transactions()
 
+    # Available months on the income tab reflect pay-month attribution so
+    # the dropdown lines up with the per-month totals.
     available_months = set()
     for txn in transactions:
-        d = _parse_date(txn['date'])
-        if d:
-            available_months.add((d.year, d.month))
+        eff = _income_effective_date(txn)
+        if eff:
+            available_months.add((eff.year, eff.month))
     months_sorted = sorted(available_months, reverse=True)
     months_list = [f'{y:04d}-{m:02d}' for y, m in months_sorted]
     years_list = sorted({y for y, _ in months_sorted}, reverse=True)
@@ -839,8 +873,8 @@ def api_income():
         amt = _income_in(txn)
         if amt <= 0:
             continue
-        d = _parse_date(txn['date'])
-        if not d or not _in_period(d):
+        eff = _income_effective_date(txn)
+        if not eff or not _in_period(eff):
             continue
         items.append({
             'date': txn['date'],
