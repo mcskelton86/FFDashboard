@@ -63,7 +63,7 @@ CATEGORY_RULES = [
 # these on a deposit line counts as income; everything else (interest,
 # cashback, internal transfers) is excluded.
 INCOME_RULES = [
-    (re.compile(r"JC\s*(?:OF\s*)?LYMING(?:T)?ON|JC\s+LYMING", re.IGNORECASE), 'Riley'),
+    (re.compile(r"JC\s*(?:OF\s*)?LYMING(?:T?ON)?", re.IGNORECASE), 'Riley'),
     (re.compile(r"L'?ANZA\s*EUROPE", re.IGNORECASE), 'Riley'),
     (re.compile(r'MONKEY\s*BREWHOUSE', re.IGNORECASE), 'Matthew'),
     (re.compile(r'TIRAMOCH', re.IGNORECASE), 'Matthew'),

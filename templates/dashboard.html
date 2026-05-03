@@ -330,11 +330,11 @@
           <div class="summary-section">
             <div class="summary-card income">
               <h3 id="incomeLabel">Last Month Income</h3>
-              <p class="amount" id="income">£0</p>
+              <p class="amount" id="overviewIncome">£0</p>
             </div>
             <div class="summary-card expense">
               <h3 id="expensesLabel">Last Month Expenses</h3>
-              <p class="amount" id="expenses">£0</p>
+              <p class="amount" id="overviewExpenses">£0</p>
             </div>
             <div class="summary-card">
               <h3>Net (In - Out)</h3>
@@ -395,7 +395,6 @@
 
       <div class="controls">
         <button class="btn btn-primary" onclick="refreshDashboard()">🔄 Refresh Data</button>
-        <a href="/upload" class="btn btn-secondary">📊 Upload Statement</a>
       </div>
     </div>
   </div>
@@ -454,8 +453,8 @@
       const sm = data.this_month;
       document.getElementById('incomeLabel').textContent = (sm.month_label || 'Last Month') + ' Income';
       document.getElementById('expensesLabel').textContent = (sm.month_label || 'Last Month') + ' Expenses';
-      document.getElementById('income').textContent = formatCurrency(sm.total_in);
-      document.getElementById('expenses').textContent = formatCurrency(sm.total_out);
+      document.getElementById('overviewIncome').textContent = formatCurrency(sm.total_in);
+      document.getElementById('overviewExpenses').textContent = formatCurrency(sm.total_out);
       document.getElementById('net').textContent = formatCurrency(sm.net);
       document.getElementById('safeToSpend').textContent = formatCurrency(sm.safe_to_spend);
       document.getElementById('lastUpdate').textContent = 'Last updated: ' + data.last_update;
