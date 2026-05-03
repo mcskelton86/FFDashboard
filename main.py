@@ -70,10 +70,6 @@ INCOME_RULES = [
     (re.compile(r'HUMBUG', re.IGNORECASE), 'Matthew'),
     (re.compile(r'PULSE\s*WELLNESS', re.IGNORECASE), 'Matthew'),
     (re.compile(r'\b(?:WAGES|SALARY)\b', re.IGNORECASE), 'Matthew'),
-    # US→UK transfers from Matthew's own US accounts. Real money in; treated
-    # as Matthew's income for the savings/cashflow model.
-    (re.compile(r'\bMATTHEW\s+SKELTON\b', re.IGNORECASE), 'Matthew'),
-    (re.compile(r'\bRILEY\s+SKELTON\b', re.IGNORECASE), 'Riley'),
 ]
 
 
@@ -257,6 +253,7 @@ def _parse_current_account_pdf(pdf):
                     'description': desc[:120],
                     'amountOut': round(out_amt, 2) if out_amt else 0,
                     'amountIn': round(in_amt, 2) if in_amt else 0,
+                    'balance': round(bal_amt, 2) if bal_amt is not None else None,
                     'fitid': '',
                 }
                 txn['category'] = categorize(desc, txn['amountIn'] > 0)
@@ -374,6 +371,9 @@ def save_transactions():
         if 'FITID' not in header:
             sheet.update_cell(1, len(header) + 1, 'FITID')
             header = sheet.row_values(1)
+        if 'Balance' not in header:
+            sheet.update_cell(1, len(header) + 1, 'Balance')
+            header = sheet.row_values(1)
 
         def _num(v):
             try:
@@ -439,6 +439,7 @@ def save_transactions():
                 if seen < existing_counts.get(sig, 0):
                     skipped_count += 1
                     continue
+            bal = txn.get('balance')
             rows_to_append.append([
                 txn['date'],
                 txn['description'],
@@ -449,7 +450,8 @@ def save_transactions():
                 datetime.now().strftime('%Y'),
                 'PDF Import',
                 datetime.now().strftime('%d/%m/%Y'),
-                txn.get('fitid', '')
+                txn.get('fitid', ''),
+                bal if bal is not None else ''
             ])
             saved_count += 1
 
@@ -542,14 +544,30 @@ def get_all_transactions():
         sheet = client.open_by_key(SHEET_ID).worksheet('Transactions')
         rows = sheet.get_all_values()
         transactions = []
+        # Header lookup so we can pick up Balance column even if its index varies.
+        header = rows[0] if rows else []
+        try:
+            bal_idx = header.index('Balance')
+        except ValueError:
+            bal_idx = -1
+
         for row in rows[1:]:
             if len(row) >= 5:
+                bal = None
+                if bal_idx >= 0 and len(row) > bal_idx:
+                    raw = (row[bal_idx] or '').replace(',', '').strip()
+                    if raw:
+                        try:
+                            bal = float(raw)
+                        except ValueError:
+                            pass
                 transactions.append({
                     'date': normalize_date(row[0]),
                     'description': row[1],
                     'amountOut': float(row[2]) if row[2] else 0,
                     'amountIn': float(row[3]) if row[3] else 0,
                     'category': row[4] if len(row) > 4 else 'Other',
+                    'balance': bal,
                 })
         _TXN_CACHE['data'] = transactions
         _TXN_CACHE['ts'] = now
@@ -734,25 +752,34 @@ def get_12_month_trend():
 
 
 def calculate_savings_progress():
-    """Total derived savings = sum of (income - spend) over all months, floored
-    at 0 (if you spend more than you earn, you haven't saved). Split per
-    GOAL_SPLIT and project per-month required to hit each deadline."""
+    """Savings derived from current-account balance growth: latest balance
+    minus baseline (the first balance we have on record). Floored at 0
+    so an account-balance dip below the baseline doesn't show negative
+    savings. Split per GOAL_SPLIT and project per-month required."""
     transactions = get_all_transactions()
     today = datetime.now()
 
-    monthly = {}
+    # Sort transactions chronologically to find the earliest and latest
+    # known balances. Balance is None for many rows (only end-of-day rows
+    # have it on Nationwide statements) — skip those.
+    dated = []
     for txn in transactions:
         d = _parse_date(txn['date'])
         if not d or d > today:
             continue
-        key = (d.year, d.month)
-        b = monthly.setdefault(key, {'in': 0.0, 'out': 0.0})
-        b['in'] += _income_in(txn)
-        b['out'] += _spend_out(txn)
+        if txn.get('balance') is None:
+            continue
+        dated.append((d, txn['balance']))
+    dated.sort(key=lambda x: x[0])
 
-    total_saved = 0.0
-    for v in monthly.values():
-        total_saved += max(0, v['in'] - v['out'])
+    if dated:
+        baseline = dated[0][1]
+        current_balance = dated[-1][1]
+        total_saved = max(0, current_balance - baseline)
+    else:
+        baseline = 0
+        current_balance = 0
+        total_saved = 0
 
     goals_out = []
     for g in GOALS:
@@ -784,6 +811,8 @@ def calculate_savings_progress():
 
     return {
         'total_saved': round(total_saved, 2),
+        'baseline_balance': round(baseline, 2),
+        'current_balance': round(current_balance, 2),
         'split': GOAL_SPLIT,
         'goals': goals_out,
     }

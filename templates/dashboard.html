@@ -433,7 +433,7 @@
       <!-- Goals Tab -->
       <div id="goals" class="tab-content">
         <h2 style="margin:0 0 6px 0;color:#1f2937;">Savings Goals</h2>
-        <p style="color:#6b7280;font-size:13px;margin:0 0 24px 0;">Implied savings from cashflow (income − spend), split 50/50.</p>
+        <p style="color:#6b7280;font-size:13px;margin:0 0 24px 0;">Savings = current-account balance growth since first statement, split 50/50.</p>
         <div id="totalSaved" style="font-size:14px;color:#6b7280;margin-bottom:16px;"></div>
         <div class="goals-grid" id="goalsGrid"></div>
       </div>
@@ -650,8 +650,13 @@
 
     function displayGoals(goalsData) {
       if (!goalsData) return;
+      const baseline = goalsData.baseline_balance;
+      const current = goalsData.current_balance;
+      const ctx = (baseline !== undefined && current !== undefined)
+        ? ` · Account balance: ${formatCurrency(baseline)} → ${formatCurrency(current)}`
+        : '';
       document.getElementById('totalSaved').textContent =
-        `Total implied savings (all time): ${formatCurrency(goalsData.total_saved)}`;
+        `Total saved (account growth): ${formatCurrency(goalsData.total_saved)}${ctx}`;
       const grid = document.getElementById('goalsGrid');
       grid.innerHTML = '';
       (goalsData.goals || []).forEach(g => {
