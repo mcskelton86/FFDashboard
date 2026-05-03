@@ -436,6 +436,7 @@
     }
 
     let overviewSelectorBuilt = false;
+    let firstLoadDone = false;
 
     function loadDashboard(period) {
       const url = '/api/dashboard-data' + (period ? `?period=${encodeURIComponent(period)}` : '');
@@ -447,10 +448,11 @@
             return;
           }
           displayOverview(data);
-          if (!overviewSelectorBuilt) {
+          displayGoals(data.goals);
+          if (!firstLoadDone) {
+            firstLoadDone = true;
             loadSpending();
             loadIncome();
-            displayGoals(data.goals);
           }
         })
         .catch(err => {
