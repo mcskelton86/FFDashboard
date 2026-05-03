@@ -731,13 +731,25 @@ def get_this_month_summary():
     transactions = get_all_transactions()
     payslips = get_all_payslips()
 
-    # Always show previous calendar month (we don't have a live bank feed,
-    # so the current month is incomplete — last month is the most recent
-    # complete view of household spend).
-    now = datetime.now()
-    last_month_date = now.replace(day=1) - timedelta(days=1)
-    current_month = last_month_date.strftime('%B')
-    current_year = last_month_date.strftime('%Y')
+    # Pick the latest month that actually has expenses — we don't have a live
+    # bank feed, so a strict "previous calendar month" is often empty.
+    months_with_spend = set()
+    for txn in transactions:
+        try:
+            if txn.get('amountOut', 0) > 0:
+                d = datetime.strptime(txn['date'], '%d %b %Y')
+                months_with_spend.add((d.year, d.month))
+        except (ValueError, TypeError):
+            continue
+
+    if months_with_spend:
+        y, m = max(months_with_spend)
+        ref = datetime(y, m, 1)
+    else:
+        now = datetime.now()
+        ref = now.replace(day=1) - timedelta(days=1)
+    current_month = ref.strftime('%B')
+    current_year = ref.strftime('%Y')
 
     total_in = 0
     total_out = 0
