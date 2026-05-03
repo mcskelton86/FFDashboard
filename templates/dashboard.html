@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Household Financial Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
   <style>
     * { box-sizing: border-box; }
 
@@ -640,10 +641,36 @@
       const amounts = Object.values(categoryData);
       const colors = ['#5A8FB0','#7BA5C5','#34D399','#F59E0B','#EF4444','#06B6D4','#8B5CF6','#EC4899','#6366F1','#14B8A6'];
       if (categoryChart) categoryChart.destroy();
+      const total = amounts.reduce((a, b) => a + b, 0);
       categoryChart = new Chart(ctx, {
         type: 'doughnut',
         data: { labels, datasets: [{ data: amounts, backgroundColor: colors.slice(0, labels.length), borderColor: '#fff', borderWidth: 2 }] },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { font: { size: 12 }, padding: 15 } } } }
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom', labels: { font: { size: 12 }, padding: 15 } },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => {
+                  const v = ctx.parsed;
+                  const pct = total ? (v / total * 100).toFixed(1) : 0;
+                  return `${ctx.label}: £${v.toFixed(2)} (${pct}%)`;
+                }
+              }
+            },
+            datalabels: {
+              color: '#fff',
+              font: { weight: '700', size: 12 },
+              formatter: (v) => {
+                if (!total) return '';
+                const pct = v / total * 100;
+                return pct < 4 ? '' : pct.toFixed(0) + '%';
+              }
+            }
+          }
+        },
+        plugins: [ChartDataLabels]
       });
     }
 
