@@ -638,7 +638,26 @@ def save_payslip():
             year_str,
             datetime.now().strftime('%d/%m/%Y %H:%M'),
         ]
-        sheet.append_row(row)
+
+        # Dedup: same date + net pay = same payslip.
+        try:
+            existing = sheet.get_all_values()
+            for r in existing[1:]:
+                if r and r[0] == date_str and len(r) > 8 and r[8] and abs(float(r[8]) - float(net)) < 0.01:
+                    return jsonify({'success': True, 'message': 'Payslip already saved (skipped)'})
+        except Exception:
+            pass
+
+        # Retry once on transient 500.
+        import time
+        for attempt in range(3):
+            try:
+                sheet.append_row(row)
+                break
+            except Exception as e:
+                if attempt == 2:
+                    raise
+                time.sleep(1.5 * (attempt + 1))
 
         return jsonify({
             'success': True,
