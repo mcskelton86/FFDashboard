@@ -49,7 +49,7 @@ CC_PAYMENT = '__cc_payment__'
 CATEGORY_RULES = [
     (re.compile(r'NATIONWIDE\s*C/CARD|MEMBER\s*CREDIT\s*CARD', re.IGNORECASE), CC_PAYMENT),
     (re.compile(r'AQUASHORE', re.IGNORECASE), 'Rent'),
-    (re.compile(r'NEW\s*FOREST\s*DC|\bFOREST\s*DC\b|COUNCIL\s*TAX', re.IGNORECASE), 'Council Tax'),
+    (re.compile(r'NEW\s*FOREST\s*DC|\bFOREST\s*DC\b|NEWFOREST\.GOV|COUNCIL\s*TAX', re.IGNORECASE), 'Council Tax'),
     (re.compile(r'SOUTHERN\s*WATER|\bWATER\s*BOARD\b', re.IGNORECASE), 'Water'),
     (re.compile(r'OCTOPUS\s*ENERGY|BRITISH\s*GAS|EDF\s*ENERGY|\bE\.?ON\b|SCOTTISH\s*POWER|BULB\s*ENERGY|OVO\s*ENERGY', re.IGNORECASE), 'Gas/Electric'),
     (re.compile(r'TROOLI', re.IGNORECASE), 'Internet'),
