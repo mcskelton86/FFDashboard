@@ -446,7 +446,13 @@
           date: date,
           amount: parseFloat(amount),
           hours: hours ? parseFloat(hours) : null,
-          person: person
+          person: person,
+          gross: uploadedData.extracted?.gross ?? null,
+          hourly_rate: uploadedData.extracted?.hourly_rate ?? null,
+          pension: uploadedData.extracted?.pension ?? null,
+          tax: uploadedData.extracted?.tax ?? null,
+          ni: uploadedData.extracted?.ni ?? null,
+          employer: uploadedData.extracted?.employer ?? ''
         })
       })
         .then(r => r.json())

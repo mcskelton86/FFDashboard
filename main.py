@@ -301,6 +301,10 @@ def parse_payslip_text(ocr_text):
         'amount': None,       # net pay (what hits the bank account)
         'gross': None,
         'hours': None,
+        'hourly_rate': None,
+        'pension': None,
+        'tax': None,
+        'ni': None,
         'date': None,
         'employer': None,
     }
@@ -340,6 +344,18 @@ def parse_payslip_text(ocr_text):
             result['date'] = datetime(int(year), int(month), int(day)).strftime('%d %b %Y')
         except (ValueError, TypeError):
             pass
+
+    # Hourly rate — e.g. "53.0000 hours @ £13.00" or "Rate 13.00".
+    m = re.search(r'@\s*[£€]?\s*([\d,]+\.\d{2})', ocr_text)
+    if not m:
+        m = re.search(r'Rate[:\s]+[£€]?\s*([\d,]+\.\d{2})', ocr_text, re.IGNORECASE)
+    if m:
+        result['hourly_rate'] = _money(m.group(1))
+
+    for key, label in (('pension', 'Pension'), ('tax', 'Tax|PAYE'), ('ni', 'National\\s*Insurance|NI(?:\\s|:)')):
+        m = re.search(rf'(?:{label})[:\s]*[£€]?\s*([\d,]+\.\d{{2}})', ocr_text, re.IGNORECASE)
+        if m:
+            result[key] = _money(m.group(1))
 
     # Employer: line after "PAID BY" (lets us guess Person on save).
     m = re.search(r'PAID\s*BY[\s:]*\n?([^\n]+)', ocr_text, re.IGNORECASE)
@@ -569,36 +585,54 @@ def upload_payslip():
 def save_payslip():
     """Save confirmed payslip data to Google Sheets"""
     try:
-        data = request.json
-        payslip_data = {
-            'date': data.get('date'),
-            'amount': data.get('amount'),
-            'hours': data.get('hours'),
-            'person': data.get('person', 'Matthew')  # Default to Matthew
-        }
+        data = request.json or {}
+        date_str = data.get('date')
+        net = data.get('amount')
 
-        if not all([payslip_data['date'], payslip_data['amount']]):
-            return jsonify({'success': False, 'error': 'Date and amount are required'})
+        if not date_str or net in (None, ''):
+            return jsonify({'success': False, 'error': 'Date and Net Pay are required'})
 
         client = get_sheets_client()
         if not client:
             return jsonify({'success': False, 'error': 'Google Sheets authentication failed'})
 
-        # Get or create Payslips worksheet
         spreadsheet = client.open_by_key(SHEET_ID)
+        headers = ['Date', 'Employer', 'Hours', 'Hourly Rate', 'Gross Pay',
+                   'Pension', 'Tax', 'NI', 'Net Pay', 'Month', 'Year', 'Upload Date']
         try:
             sheet = spreadsheet.worksheet('Payslips')
-        except:
-            # Create worksheet if it doesn't exist
-            sheet = spreadsheet.add_worksheet('Payslips', 1000, 10)
-            sheet.append_row(['Date', 'Amount', 'Hours', 'Person', 'Saved On'])
+        except Exception:
+            sheet = spreadsheet.add_worksheet('Payslips', 1000, len(headers))
+            sheet.append_row(headers)
+
+        # Derive Month/Year from the payslip date (e.g. "30 Apr 2026").
+        month_str, year_str = '', ''
+        try:
+            d = datetime.strptime(date_str, '%d %b %Y')
+            month_str = d.strftime('%b')
+            year_str = d.strftime('%Y')
+        except ValueError:
+            pass
+
+        def _num(v):
+            try:
+                return float(v) if v not in (None, '') else ''
+            except (TypeError, ValueError):
+                return ''
 
         row = [
-            payslip_data['date'],
-            payslip_data['amount'],
-            payslip_data['hours'] or '',
-            payslip_data['person'],
-            datetime.now().strftime('%d/%m/%Y %H:%M')
+            date_str,
+            data.get('employer', '') or '',
+            _num(data.get('hours')),
+            _num(data.get('hourly_rate')),
+            _num(data.get('gross')),
+            _num(data.get('pension')),
+            _num(data.get('tax')),
+            _num(data.get('ni')),
+            _num(net),
+            month_str,
+            year_str,
+            datetime.now().strftime('%d/%m/%Y %H:%M'),
         ]
         sheet.append_row(row)
 
