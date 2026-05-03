@@ -693,17 +693,30 @@ def get_all_payslips():
 
         rows = sheet.get_all_values()
 
-        # Skip header row
+        # Schema: Date | Employer | Hours | Hourly Rate | Gross Pay | Pension | Tax | NI | Net Pay | Month | Year | Upload Date
+        def _f(v):
+            try:
+                return float(str(v).replace(',', '').replace('£', '')) if v not in (None, '') else 0
+            except ValueError:
+                return 0
+
         payslips = []
         for row in rows[1:]:
-            if len(row) >= 2:
-                date_str = normalize_date(row[0])
-                payslips.append({
-                    'date': date_str,
-                    'amount': float(row[1]) if row[1] else 0,
-                    'hours': float(row[2]) if len(row) > 2 and row[2] else 0,
-                    'person': row[3] if len(row) > 3 else 'Matthew'
-                })
+            if not row or not row[0]:
+                continue
+            date_str = normalize_date(row[0])
+            payslips.append({
+                'date': date_str,
+                'employer': row[1] if len(row) > 1 else '',
+                'hours': _f(row[2]) if len(row) > 2 else 0,
+                'hourly_rate': _f(row[3]) if len(row) > 3 else 0,
+                'gross': _f(row[4]) if len(row) > 4 else 0,
+                'pension': _f(row[5]) if len(row) > 5 else 0,
+                'tax': _f(row[6]) if len(row) > 6 else 0,
+                'ni': _f(row[7]) if len(row) > 7 else 0,
+                'amount': _f(row[8]) if len(row) > 8 else 0,  # Net Pay
+                'person': 'Matthew',
+            })
 
         return payslips
     except Exception as e:
