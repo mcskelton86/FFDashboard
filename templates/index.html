@@ -203,7 +203,7 @@
       <div id="uploadSection" class="upload-section">
         <h2>📋 Upload Statement</h2>
         <p>PDF statement from your Nationwide app</p>
-        <input type="file" id="ofxFile" accept=".pdf">
+        <input type="file" id="ofxFile" accept=".pdf" multiple>
         <br>
         <button onclick="parseStatement()">Upload Statement</button>
       </div>
@@ -257,21 +257,22 @@
     }
     
     function parseStatement() {
-      const file = document.getElementById('ofxFile').files[0];
-      if (!file) {
-        showMessage('Choose a PDF statement to upload', 'error');
+      const files = document.getElementById('ofxFile').files;
+      if (!files || files.length === 0) {
+        showMessage('Choose one or more PDF statements to upload', 'error');
         return;
       }
       document.getElementById('loading').classList.add('active');
       const fd = new FormData();
-      fd.append('file', file);
+      for (const f of files) fd.append('file', f);
       fetch('/parse-pdf', { method: 'POST', body: fd })
         .then(r => r.json())
         .then(data => {
           document.getElementById('loading').classList.remove('active');
           if (data.success) {
             currentTransactions = data.transactions;
-            displayReview(data.transactions, data.count);
+            const breakdown = (data.per_file || []).map(p => `${p.filename}: ${p.count}`).join(', ');
+            displayReview(data.transactions, data.count, breakdown);
           } else {
             showMessage('Error: ' + data.error, 'error');
           }
@@ -282,10 +283,11 @@
         });
     }
     
-    function displayReview(transactions, count) {
+    function displayReview(transactions, count, breakdown) {
       document.getElementById('uploadSection').style.display = 'none';
       document.getElementById('reviewSection').classList.add('active');
-      document.getElementById('reviewMessage').textContent = `Found ${count} transactions`;
+      const msg = `Found ${count} transactions` + (breakdown ? ` (${breakdown})` : '');
+      document.getElementById('reviewMessage').textContent = msg;
       
       const tbody = document.getElementById('transactionsList');
       tbody.innerHTML = '';

@@ -420,20 +420,34 @@ def payslip_review():
 @app.route('/parse-pdf', methods=['POST'])
 def parse_pdf():
     try:
-        if 'file' not in request.files:
+        files = request.files.getlist('file') or request.files.getlist('files')
+        if not files:
             return jsonify({'success': False, 'error': 'No file uploaded'})
-        f = request.files['file']
-        pdf_bytes = f.read()
-        if not pdf_bytes:
-            return jsonify({'success': False, 'error': 'Empty file'})
 
-        transactions = parse_nationwide_pdf(pdf_bytes)
-        if not transactions:
-            return jsonify({'success': False, 'error': 'No transactions found in PDF'})
+        all_transactions = []
+        per_file = []
+        errors = []
+        for f in files:
+            try:
+                pdf_bytes = f.read()
+                if not pdf_bytes:
+                    errors.append(f'{f.filename}: empty')
+                    continue
+                txns = parse_nationwide_pdf(pdf_bytes) or []
+                per_file.append({'filename': f.filename, 'count': len(txns)})
+                all_transactions.extend(txns)
+            except Exception as e:
+                errors.append(f'{f.filename}: {e}')
+
+        if not all_transactions:
+            return jsonify({'success': False, 'error': 'No transactions found. ' + '; '.join(errors)})
+
         return jsonify({
             'success': True,
-            'transactions': transactions,
-            'count': len(transactions)
+            'transactions': all_transactions,
+            'count': len(all_transactions),
+            'per_file': per_file,
+            'errors': errors,
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
