@@ -570,7 +570,14 @@
             <input type="file" id="payslipFile" accept="image/*,.pdf" style="display:none;">
             <button class="upload-button" onclick="document.getElementById('payslipFile').click()">Select File</button>
           </div>
-          <ul class="payslips-list" id="payslipsList"></ul>
+        </div>
+        <div style="margin-top:24px;">
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+            <h2 style="margin:0;color:#1f2937;">Income</h2>
+            <select id="incomePeriod" style="margin-left:auto;padding:6px 10px;border-radius:6px;border:1px solid #d1d5db;background:white;font-size:14px;"></select>
+          </div>
+          <div id="incomeTotal" style="margin-bottom:8px;color:#6b7280;font-size:14px;"></div>
+          <ul class="payslips-list" id="incomeList"></ul>
         </div>
       </div>
 
@@ -675,8 +682,9 @@
       drawCategoryChart(categoryData);
       drawTrendChart(trendData);
 
-      // Spending tab is driven by its own selector-aware endpoint.
+      // Spending and Income tabs are driven by their own selector-aware endpoints.
       loadSpending();
+      loadIncome();
 
       // Display income projections
       displayProjections(projections);
@@ -708,6 +716,48 @@
     }
 
     let spendingSelectorBuilt = false;
+    let incomeSelectorBuilt = false;
+
+    function loadIncome(period) {
+      const url = '/api/income' + (period ? `?period=${encodeURIComponent(period)}` : '');
+      fetch(url).then(r => r.json()).then(data => {
+        const sel = document.getElementById('incomePeriod');
+        if (!incomeSelectorBuilt) {
+          const opts = [];
+          (data.available_months || []).forEach(m => opts.push(`<option value="${m}">${formatPeriodLabel(m)}</option>`));
+          (data.available_years || []).forEach(y => opts.push(`<option value="${y}">${formatPeriodLabel(y)}</option>`));
+          opts.push('<option value="all">All time</option>');
+          sel.innerHTML = opts.join('');
+          sel.value = data.period || 'all';
+          sel.addEventListener('change', () => loadIncome(sel.value));
+          incomeSelectorBuilt = true;
+        } else if (period) {
+          sel.value = period;
+        }
+        document.getElementById('incomeTotal').textContent =
+          `${formatPeriodLabel(data.period)} — total income: ${formatCurrency(data.total)}`;
+        const list = document.getElementById('incomeList');
+        list.innerHTML = '';
+        if (!data.items || data.items.length === 0) {
+          list.innerHTML = '<li class="empty-state">No income for this period</li>';
+          return;
+        }
+        data.items.forEach(it => {
+          const li = document.createElement('li');
+          li.className = 'payslip-item';
+          const tag = it.source === 'payslip' ? '📄' : '🏦';
+          const personStr = it.person ? ` · ${it.person}` : '';
+          li.innerHTML = `
+            <div>
+              <span class="payslip-date">${tag} ${it.date}</span>
+              <div style="font-size:12px;color:#9ca3af;margin-top:4px;">${it.description}${personStr}</div>
+            </div>
+            <span class="payslip-amount">${formatCurrency(it.amount)}</span>
+          `;
+          list.appendChild(li);
+        });
+      });
+    }
 
     const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     function formatPeriodLabel(p) {

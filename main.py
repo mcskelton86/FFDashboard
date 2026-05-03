@@ -998,6 +998,95 @@ def api_spending():
     })
 
 
+@app.route('/api/income')
+def api_income():
+    """Income for a chosen period (payslips + positive bank transactions),
+    deduping deposits that match a payslip net within £1.
+    """
+    period = request.args.get('period', '').strip()
+    transactions = get_all_transactions()
+    payslips = get_all_payslips()
+
+    available_months = set()
+    for src in (transactions, payslips):
+        for r in src:
+            try:
+                d = datetime.strptime(r['date'], '%d %b %Y')
+                available_months.add((d.year, d.month))
+            except (ValueError, TypeError):
+                continue
+    months_sorted = sorted(available_months, reverse=True)
+    months_list = [f'{y:04d}-{m:02d}' for y, m in months_sorted]
+    years_list = sorted({y for y, _ in months_sorted}, reverse=True)
+    if not period and months_list:
+        period = months_list[0]
+
+    def _in_period(d):
+        if period == 'all':
+            return True
+        if len(period) == 7:
+            return d.strftime('%Y-%m') == period
+        if len(period) == 4:
+            return d.strftime('%Y') == period
+        return False
+
+    items = []
+    total = 0.0
+    payslip_nets_by_month = {}
+
+    for p in payslips:
+        try:
+            d = datetime.strptime(p['date'], '%d %b %Y')
+        except (ValueError, TypeError):
+            continue
+        ym = d.strftime('%Y-%m')
+        payslip_nets_by_month.setdefault(ym, []).append(p['amount'])
+        if _in_period(d):
+            items.append({
+                'date': p['date'],
+                'description': f"Payslip — {p.get('employer') or p.get('person', '')}",
+                'amount': p['amount'],
+                'source': 'payslip',
+                'person': p.get('person', 'Matthew'),
+            })
+            total += p['amount']
+
+    for txn in transactions:
+        amt_in = txn.get('amountIn', 0) or 0
+        if amt_in <= 0:
+            continue
+        try:
+            d = datetime.strptime(txn['date'], '%d %b %Y')
+        except (ValueError, TypeError):
+            continue
+        ym = d.strftime('%Y-%m')
+        nets = payslip_nets_by_month.get(ym, [])
+        if any(abs(amt_in - n) < 1.0 for n in nets):
+            continue
+        if not _in_period(d):
+            continue
+        desc_upper = txn.get('description', '').upper()
+        person = 'Riley' if 'JC LYMINGON' in desc_upper or 'JC OF LYMINGON' in desc_upper or 'JC LYMINGTON' in desc_upper else ''
+        items.append({
+            'date': txn['date'],
+            'description': txn.get('description', ''),
+            'amount': amt_in,
+            'source': 'bank',
+            'person': person,
+        })
+        total += amt_in
+
+    items.sort(key=lambda r: datetime.strptime(r['date'], '%d %b %Y'), reverse=True)
+
+    return jsonify({
+        'period': period,
+        'available_months': months_list,
+        'available_years': [str(y) for y in years_list],
+        'items': items,
+        'total': round(total, 2),
+    })
+
+
 @app.route('/api/dashboard-data')
 def api_dashboard_data():
     try:
