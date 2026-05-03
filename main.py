@@ -583,6 +583,7 @@ def upload_payslip():
 
         if ext == 'pdf':
             # Digital payslip — extract text directly with pdfplumber.
+            import pdfplumber
             with pdfplumber.open(io.BytesIO(file_data)) as pdf:
                 ocr_text = '\n'.join((p.extract_text() or '') for p in pdf.pages)
         else:
