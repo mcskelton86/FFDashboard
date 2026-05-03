@@ -550,8 +550,12 @@
 
       <!-- Spending Tab -->
       <div id="spending" class="tab-content">
-        <div id="spending-content" style="display:none;">
-          <h2 style="margin-top: 0; color: #1f2937;">Monthly Spending by Category</h2>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+          <h2 style="margin:0;color:#1f2937;">Spending by Category</h2>
+          <select id="spendingPeriod" style="margin-left:auto;padding:6px 10px;border-radius:6px;border:1px solid #d1d5db;background:white;font-size:14px;"></select>
+        </div>
+        <div id="spendingTotal" style="margin-bottom:8px;color:#6b7280;font-size:14px;"></div>
+        <div id="spending-content">
           <ul class="category-list" id="categoryList"></ul>
         </div>
       </div>
@@ -671,8 +675,8 @@
       drawCategoryChart(categoryData);
       drawTrendChart(trendData);
 
-      // Display spending categories
-      displaySpendingCategories(categoryData);
+      // Spending tab is driven by its own selector-aware endpoint.
+      loadSpending();
 
       // Display income projections
       displayProjections(projections);
@@ -685,10 +689,8 @@
       const list = document.getElementById('categoryList');
       list.innerHTML = '';
 
-      const sc = document.getElementById('spending-content');
-      sc.style.display = 'block';
       if (Object.keys(categoryData).length === 0) {
-        sc.innerHTML = '<p class="empty-state">No spending data this month</p>';
+        list.innerHTML = '<li class="empty-state">No spending data for this period</li>';
         return;
       }
 
@@ -703,6 +705,41 @@
           `;
           list.appendChild(li);
         });
+    }
+
+    let spendingSelectorBuilt = false;
+
+    const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    function formatPeriodLabel(p) {
+      if (p === 'all') return 'All time';
+      if (p.length === 4) return `Year ${p}`;
+      if (p.length === 7) {
+        const [y, m] = p.split('-');
+        return `${MONTH_NAMES[parseInt(m,10)-1]} ${y}`;
+      }
+      return p;
+    }
+
+    function loadSpending(period) {
+      const url = '/api/spending' + (period ? `?period=${encodeURIComponent(period)}` : '');
+      fetch(url).then(r => r.json()).then(data => {
+        const sel = document.getElementById('spendingPeriod');
+        if (!spendingSelectorBuilt) {
+          const opts = [];
+          (data.available_months || []).forEach(m => opts.push(`<option value="${m}">${formatPeriodLabel(m)}</option>`));
+          (data.available_years || []).forEach(y => opts.push(`<option value="${y}">${formatPeriodLabel(y)}</option>`));
+          opts.push('<option value="all">All time</option>');
+          sel.innerHTML = opts.join('');
+          sel.value = data.period || (data.available_months && data.available_months[0]) || 'all';
+          sel.addEventListener('change', () => loadSpending(sel.value));
+          spendingSelectorBuilt = true;
+        } else if (period) {
+          sel.value = period;
+        }
+        document.getElementById('spendingTotal').textContent =
+          `${formatPeriodLabel(data.period)} — total spent: ${formatCurrency(data.total_out)}`;
+        displaySpendingCategories(data.by_category || {});
+      });
     }
 
     function displayProjections(projections) {

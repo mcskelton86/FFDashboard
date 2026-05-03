@@ -920,6 +920,68 @@ def calculate_income_projections():
 
 # ===== API ENDPOINTS =====
 
+@app.route('/api/spending')
+def api_spending():
+    """Spending breakdown for a chosen period.
+
+    period query: 'YYYY-MM' (specific month), 'YYYY' (full year), or 'all'.
+    Returns by_category, totals, and the list of available months/years for
+    populating a selector.
+    """
+    period = request.args.get('period', '').strip()
+    transactions = get_all_transactions()
+
+    available_months = set()
+    for txn in transactions:
+        try:
+            d = datetime.strptime(txn['date'], '%d %b %Y')
+            available_months.add((d.year, d.month))
+        except (ValueError, TypeError):
+            continue
+    months_sorted = sorted(available_months, reverse=True)
+    months_list = [f'{y:04d}-{m:02d}' for y, m in months_sorted]
+    years_list = sorted({y for y, _ in months_sorted}, reverse=True)
+
+    # Default = latest month with data.
+    if not period and months_list:
+        period = months_list[0]
+
+    def _in_period(d):
+        if period == 'all':
+            return True
+        if len(period) == 7:  # YYYY-MM
+            return d.strftime('%Y-%m') == period
+        if len(period) == 4:  # YYYY
+            return d.strftime('%Y') == period
+        return False
+
+    by_category = {}
+    total_out = 0.0
+    total_in = 0.0
+    for txn in transactions:
+        try:
+            d = datetime.strptime(txn['date'], '%d %b %Y')
+        except (ValueError, TypeError):
+            continue
+        if not _in_period(d):
+            continue
+        out = txn.get('amountOut', 0) or 0
+        total_out += out
+        total_in += txn.get('amountIn', 0) or 0
+        if out > 0:
+            cat = txn.get('category') or 'Other'
+            by_category[cat] = by_category.get(cat, 0) + out
+
+    return jsonify({
+        'period': period,
+        'available_months': months_list,
+        'available_years': [str(y) for y in years_list],
+        'by_category': {k: round(v, 2) for k, v in by_category.items()},
+        'total_out': round(total_out, 2),
+        'total_in': round(total_in, 2),
+    })
+
+
 @app.route('/api/dashboard-data')
 def api_dashboard_data():
     try:
