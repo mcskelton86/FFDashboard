@@ -396,6 +396,8 @@ def save_transactions():
         if rows_to_append:
             sheet.append_rows(rows_to_append)
 
+        _invalidate_txn_cache()
+
         msg_parts = [f'Saved {saved_count} transactions']
         if skipped_count:
             msg_parts.append(f'skipped {skipped_count} duplicate{"s" if skipped_count != 1 else ""} from upload')
@@ -452,6 +454,8 @@ def recategorize():
         if updates:
             sheet.batch_update(updates, value_input_option='USER_ENTERED')
 
+        _invalidate_txn_cache()
+
         return jsonify({'success': True, 'updated': changed, 'total': len(rows) - 1})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
@@ -459,7 +463,18 @@ def recategorize():
 
 # ===== DATA RETRIEVAL =====
 
+_TXN_CACHE = {'data': None, 'ts': 0}
+_TXN_CACHE_TTL = 30  # seconds — long enough to coalesce the 3 reads on a single page load
+
+def _invalidate_txn_cache():
+    _TXN_CACHE['data'] = None
+    _TXN_CACHE['ts'] = 0
+
 def get_all_transactions():
+    import time
+    now = time.time()
+    if _TXN_CACHE['data'] is not None and (now - _TXN_CACHE['ts']) < _TXN_CACHE_TTL:
+        return _TXN_CACHE['data']
     try:
         client = get_sheets_client()
         if not client:
@@ -476,10 +491,12 @@ def get_all_transactions():
                     'amountIn': float(row[3]) if row[3] else 0,
                     'category': row[4] if len(row) > 4 else 'Other',
                 })
+        _TXN_CACHE['data'] = transactions
+        _TXN_CACHE['ts'] = now
         return transactions
     except Exception as e:
         print(f"Error fetching transactions: {e}")
-        return []
+        return _TXN_CACHE['data'] or []
 
 
 def _parse_date(s):
