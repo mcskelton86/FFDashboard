@@ -346,9 +346,9 @@ def parse_payslip_text(ocr_text):
             pass
 
     # Hourly rate — e.g. "53.0000 hours @ £13.00" or "Rate 13.00".
-    m = re.search(r'@\s*[£€]?\s*([\d,]+\.\d{2})', ocr_text)
+    m = re.search(r'@\s*[£€]?\s*([\d,]+(?:\.\d{1,2})?)', ocr_text)
     if not m:
-        m = re.search(r'Rate[:\s]+[£€]?\s*([\d,]+\.\d{2})', ocr_text, re.IGNORECASE)
+        m = re.search(r'Rate[:\s]+[£€]?\s*([\d,]+(?:\.\d{1,2})?)', ocr_text, re.IGNORECASE)
     if m:
         result['hourly_rate'] = _money(m.group(1))
 
