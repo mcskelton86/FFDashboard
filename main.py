@@ -352,8 +352,10 @@ def parse_payslip_text(ocr_text):
     if m:
         result['hourly_rate'] = _money(m.group(1))
 
-    for key, label in (('pension', 'Pension'), ('tax', 'Tax|PAYE'), ('ni', 'National\\s*Insurance|NI(?:\\s|:)')):
-        m = re.search(rf'(?:{label})[:\s]*[£€]?\s*([\d,]+\.\d{{2}})', ocr_text, re.IGNORECASE)
+    # Tax / Pension / NI — labels and amounts can be split across columns or
+    # newlines in OCR output, so allow up to ~40 chars between label and number.
+    for key, label in (('pension', r'Pension'), ('tax', r'(?:PAYE\s*Tax|Tax|PAYE)'), ('ni', r'National\s*Insurance|\bNI\b')):
+        m = re.search(rf'(?:{label})[^\d£€\n]{{0,40}}[£€]?\s*([\d,]+\.\d{{2}})', ocr_text, re.IGNORECASE)
         if m:
             result[key] = _money(m.group(1))
 
