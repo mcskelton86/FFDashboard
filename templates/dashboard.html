@@ -685,12 +685,12 @@
       const list = document.getElementById('categoryList');
       list.innerHTML = '';
 
+      const sc = document.getElementById('spending-content');
+      sc.style.display = 'block';
       if (Object.keys(categoryData).length === 0) {
-        document.getElementById('spending-content').innerHTML = '<p class="empty-state">No spending data this month</p>';
+        sc.innerHTML = '<p class="empty-state">No spending data this month</p>';
         return;
       }
-
-      document.getElementById('spending-content').style.display = 'block';
 
       Object.entries(categoryData)
         .sort((a, b) => b[1] - a[1])
