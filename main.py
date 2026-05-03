@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_from_directory
 import re
 from datetime import datetime, timedelta
 import gspread
@@ -305,6 +305,15 @@ def upload():
 @app.route('/dashboard')
 def dashboard():
     return render_template('dashboard.html')
+
+
+@app.route('/sw.js')
+def service_worker():
+    """Service worker must be served from root scope, not /static/."""
+    resp = send_from_directory('static', 'sw.js')
+    resp.headers['Service-Worker-Allowed'] = '/'
+    resp.headers['Cache-Control'] = 'no-cache'
+    return resp
 
 
 @app.route('/parse-pdf', methods=['POST'])

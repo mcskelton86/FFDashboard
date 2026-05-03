@@ -2,7 +2,14 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#5A8FB0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="FFDashboard">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="apple-touch-icon" href="/static/icon.svg">
+  <link rel="icon" type="image/svg+xml" href="/static/icon.svg">
   <title>Household Financial Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
@@ -291,16 +298,49 @@
     .empty-state { text-align: center; padding: 40px; color: #9ca3af; }
 
     @media (max-width: 768px) {
-      .header { padding: 24px; }
-      .header h1 { font-size: 26px; }
-      .tabs-container { padding: 0 16px; overflow-x: auto; }
-      .tab-button { padding: 14px 16px; font-size: 12px; white-space: nowrap; }
-      .content { padding: 20px; }
-      .summary-section { grid-template-columns: repeat(2, 1fr); gap: 12px; }
-      .summary-card { padding: 20px; }
-      .summary-card .amount { font-size: 22px; }
-      .charts-section { grid-template-columns: 1fr; }
+      body { padding: 0; }
+      .container {
+        margin: 0;
+        border-radius: 0;
+        box-shadow: none;
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      .header { padding: 20px 16px; }
+      .header h1 { font-size: 22px; }
+      .header p { font-size: 13px; }
+      .header-actions { margin-top: 14px; }
+      .tabs-container { padding: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .tabs-container::-webkit-scrollbar { display: none; }
+      .tab-button { padding: 12px 14px; font-size: 11px; white-space: nowrap; letter-spacing: 0.3px; }
+      .content { padding: 16px; }
+
+      .summary-section { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 24px; }
+      .summary-card { padding: 16px; border-radius: 10px; }
+      .summary-card h3 { font-size: 11px; margin-bottom: 8px; }
+      .summary-card .amount { font-size: 20px; }
+
+      .charts-section { grid-template-columns: 1fr; gap: 16px; }
+      .chart-container { padding: 16px; }
+      .chart-container h2 { font-size: 16px; margin-bottom: 16px; }
       .chart-wrapper { height: 240px; }
+
+      .category-item { padding: 12px; }
+      .category-name { font-size: 14px; }
+      .category-amount { font-size: 16px; }
+
+      .income-item { padding: 12px 14px; }
+      .income-amount { font-size: 17px; }
+
+      .goals-grid { grid-template-columns: 1fr; gap: 16px; }
+      .goal-card { padding: 18px; }
+      .goal-name { font-size: 16px; }
+
+      /* Period selector and controls inside section headers wrap cleanly. */
+      h2 + select, .review-header select { width: 100%; }
+
+      .controls { margin-top: 20px; }
+      .btn { padding: 10px 18px; font-size: 13px; }
     }
   </style>
 </head>
@@ -714,6 +754,13 @@
     }
 
     window.addEventListener('load', () => loadDashboard());
+
+    // Register service worker for PWA install / offline shell.
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(err => console.warn('SW registration failed:', err));
+      });
+    }
   </script>
 </body>
 </html>

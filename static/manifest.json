@@ -1,0 +1,13 @@
+{
+  "name": "Household Financial Dashboard",
+  "short_name": "FFDashboard",
+  "description": "Matthew & Riley's combined finances",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#A7C7DD",
+  "theme_color": "#5A8FB0",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

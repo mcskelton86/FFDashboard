@@ -2,7 +2,10 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#5A8FB0">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="apple-touch-icon" href="/static/icon.svg">
   <title>Statement Importer</title>
   <style>
     * { box-sizing: border-box; }
@@ -20,6 +23,24 @@
       border-radius: 16px;
       box-shadow: 0 20px 60px rgba(0,0,0,0.15);
       overflow: hidden;
+    }
+    @media (max-width: 768px) {
+      body { padding: 0; }
+      .container {
+        margin: 0;
+        border-radius: 0;
+        box-shadow: none;
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      .header { padding: 24px 16px !important; }
+      .header h1 { font-size: 24px !important; }
+      .content { padding: 16px !important; }
+      .upload-section { padding: 20px !important; }
+      .transactions-table { font-size: 13px; }
+      .transactions-table th, .transactions-table td { padding: 8px 6px; }
+      .category-select { font-size: 12px; padding: 4px; }
+      button { padding: 10px 18px; font-size: 14px; }
     }
     .header {
       background: linear-gradient(135deg, #5A8FB0 0%, #7BA5C5 100%);
