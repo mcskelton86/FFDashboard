@@ -379,14 +379,14 @@
     }
 
     function loadPayslipData() {
-      const dataStr = getQueryParam('data');
+      const dataStr = sessionStorage.getItem('payslipData') || getQueryParam('data');
       if (!dataStr) {
         showError('No payslip data found. Please upload an image first.');
         return;
       }
 
       try {
-        uploadedData = JSON.parse(decodeURIComponent(dataStr));
+        uploadedData = JSON.parse(dataStr.startsWith('{') ? dataStr : decodeURIComponent(dataStr));
 
         if (!uploadedData.success) {
           showError('Error processing payslip: ' + uploadedData.error);

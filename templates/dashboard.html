@@ -874,8 +874,8 @@
         .then(r => r.json())
         .then(data => {
           if (data.success) {
-            // Redirect to review page with data
-            window.location.href = '/payslip-review?data=' + encodeURIComponent(JSON.stringify(data));
+            sessionStorage.setItem('payslipData', JSON.stringify(data));
+            window.location.href = '/payslip-review';
           } else {
             alert('Error: ' + data.error);
           }
