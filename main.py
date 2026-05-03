@@ -547,24 +547,55 @@ def _income_in(txn):
     return amt
 
 
-def get_this_month_summary():
-    """Latest month with expenses (capped at today)."""
+def get_summary(period=''):
+    """Summary for the given period.
+    period: 'YYYY-MM' (specific month), 'YYYY' (full year), 'all', or '' (default = latest month with expenses).
+    """
     transactions = get_all_transactions()
     today = datetime.now()
 
-    months_with_spend = set()
+    available = set()
     for txn in transactions:
         d = _parse_date(txn['date'])
-        if d and d <= today and _spend_out(txn) > 0:
-            months_with_spend.add((d.year, d.month))
+        if d:
+            available.add((d.year, d.month))
+    months_sorted = sorted(available, reverse=True)
+    months_list = [f'{y:04d}-{m:02d}' for y, m in months_sorted]
+    years_list = sorted({y for y, _ in months_sorted}, reverse=True)
 
-    if months_with_spend:
-        y, m = max(months_with_spend)
-        ref = datetime(y, m, 1)
+    # Default: latest month with expenses (capped at today).
+    if not period:
+        months_with_spend = set()
+        for txn in transactions:
+            d = _parse_date(txn['date'])
+            if d and d <= today and _spend_out(txn) > 0:
+                months_with_spend.add((d.year, d.month))
+        if months_with_spend:
+            y, m = max(months_with_spend)
+            period = f'{y:04d}-{m:02d}'
+        elif months_list:
+            period = months_list[0]
+        else:
+            period = today.strftime('%Y-%m')
+
+    def _in_period(d):
+        if period == 'all':
+            return True
+        if len(period) == 7:
+            return d.strftime('%Y-%m') == period
+        if len(period) == 4:
+            return d.strftime('%Y') == period
+        return False
+
+    if period == 'all':
+        label = 'All time'
+    elif len(period) == 4:
+        label = f'Year {period}'
+    elif len(period) == 7:
+        y, m = period.split('-')
+        label = datetime(int(y), int(m), 1).strftime('%B %Y')
     else:
-        ref = today.replace(day=1) - timedelta(days=1)
-    current_month = ref.strftime('%B')
-    current_year = ref.strftime('%Y')
+        label = period
 
     total_in = 0.0
     total_out = 0.0
@@ -572,9 +603,7 @@ def get_this_month_summary():
 
     for txn in transactions:
         d = _parse_date(txn['date'])
-        if not d:
-            continue
-        if d.strftime('%B') != current_month or d.strftime('%Y') != current_year:
+        if not d or not _in_period(d):
             continue
         total_in += _income_in(txn)
         out = _spend_out(txn)
@@ -587,13 +616,20 @@ def get_this_month_summary():
 
     net = total_in - total_out
     return {
-        'month_label': f'{current_month} {current_year}',
+        'period': period,
+        'month_label': label,
+        'available_months': months_list,
+        'available_years': [str(y) for y in years_list],
         'total_in': round(total_in, 2),
         'total_out': round(total_out, 2),
         'net': round(net, 2),
         'safe_to_spend': round(max(0, net), 2),
         'by_category': {k: round(v, 2) for k, v in by_category.items()},
     }
+
+
+def get_this_month_summary():
+    return get_summary('')
 
 
 def get_12_month_trend():
@@ -788,7 +824,8 @@ def api_goals():
 @app.route('/api/dashboard-data')
 def api_dashboard_data():
     try:
-        summary = get_this_month_summary()
+        period = request.args.get('period', '').strip()
+        summary = get_summary(period)
         trend = get_12_month_trend()
         return jsonify({
             'this_month': summary,

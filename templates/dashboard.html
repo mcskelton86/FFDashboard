@@ -327,6 +327,10 @@
         <div id="loading" class="loading">Loading dashboard...</div>
 
         <div id="overview-content" style="display:none;">
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+            <h2 style="margin:0;color:#1f2937;">Summary</h2>
+            <select id="overviewPeriod" style="margin-left:auto;padding:6px 10px;border-radius:6px;border:1px solid #d1d5db;background:white;font-size:14px;"></select>
+          </div>
           <div class="summary-section">
             <div class="summary-card income">
               <h3 id="incomeLabel">Last Month Income</h3>
@@ -430,8 +434,11 @@
       return p;
     }
 
-    function loadDashboard() {
-      fetch('/api/dashboard-data')
+    let overviewSelectorBuilt = false;
+
+    function loadDashboard(period) {
+      const url = '/api/dashboard-data' + (period ? `?period=${encodeURIComponent(period)}` : '');
+      fetch(url)
         .then(r => r.json())
         .then(data => {
           if (data.success === false) {
@@ -439,9 +446,11 @@
             return;
           }
           displayOverview(data);
-          loadSpending();
-          loadIncome();
-          displayGoals(data.goals);
+          if (!overviewSelectorBuilt) {
+            loadSpending();
+            loadIncome();
+            displayGoals(data.goals);
+          }
         })
         .catch(err => {
           document.getElementById('loading').textContent = 'Error loading dashboard: ' + err.message;
@@ -451,8 +460,8 @@
 
     function displayOverview(data) {
       const sm = data.this_month;
-      document.getElementById('incomeLabel').textContent = (sm.month_label || 'Last Month') + ' Income';
-      document.getElementById('expensesLabel').textContent = (sm.month_label || 'Last Month') + ' Expenses';
+      document.getElementById('incomeLabel').textContent = (sm.month_label || 'Period') + ' Income';
+      document.getElementById('expensesLabel').textContent = (sm.month_label || 'Period') + ' Expenses';
       document.getElementById('overviewIncome').textContent = formatCurrency(sm.total_in);
       document.getElementById('overviewExpenses').textContent = formatCurrency(sm.total_out);
       document.getElementById('net').textContent = formatCurrency(sm.net);
@@ -462,6 +471,20 @@
       document.getElementById('overview-content').style.display = 'block';
       drawCategoryChart(sm.by_category);
       drawTrendChart(data.trend_12_months);
+
+      const sel = document.getElementById('overviewPeriod');
+      if (!overviewSelectorBuilt) {
+        const opts = [];
+        (sm.available_months || []).forEach(m => opts.push(`<option value="${m}">${formatPeriodLabel(m)}</option>`));
+        (sm.available_years || []).forEach(y => opts.push(`<option value="${y}">${formatPeriodLabel(y)}</option>`));
+        opts.push('<option value="all">All time</option>');
+        sel.innerHTML = opts.join('');
+        sel.value = sm.period || 'all';
+        sel.addEventListener('change', () => loadDashboard(sel.value));
+        overviewSelectorBuilt = true;
+      } else {
+        sel.value = sm.period;
+      }
     }
 
     // Display order for spending categories — Housing group first.
