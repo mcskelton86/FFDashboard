@@ -527,6 +527,23 @@ def _parse_date(s):
         return None
 
 
+def _previous_month_period():
+    """Return previous calendar month as 'YYYY-MM' relative to today."""
+    today = datetime.now()
+    first_of_this_month = today.replace(day=1)
+    last_of_prev = first_of_this_month - timedelta(days=1)
+    return last_of_prev.strftime('%Y-%m')
+
+
+def _default_period(months_list):
+    """Pick the previous calendar month if it's in the list; otherwise the
+    latest available month; otherwise empty."""
+    prev = _previous_month_period()
+    if prev in months_list:
+        return prev
+    return months_list[0] if months_list else ''
+
+
 def _spend_out(txn):
     """Amount counted as spending. Excludes the credit-card payment line on the
     current account (that money isn't spent until it shows up on the CC
@@ -563,20 +580,9 @@ def get_summary(period=''):
     months_list = [f'{y:04d}-{m:02d}' for y, m in months_sorted]
     years_list = sorted({y for y, _ in months_sorted}, reverse=True)
 
-    # Default: latest month with expenses (capped at today).
+    # Default: previous calendar month, falling back to latest available.
     if not period:
-        months_with_spend = set()
-        for txn in transactions:
-            d = _parse_date(txn['date'])
-            if d and d <= today and _spend_out(txn) > 0:
-                months_with_spend.add((d.year, d.month))
-        if months_with_spend:
-            y, m = max(months_with_spend)
-            period = f'{y:04d}-{m:02d}'
-        elif months_list:
-            period = months_list[0]
-        else:
-            period = today.strftime('%Y-%m')
+        period = _default_period(months_list) or today.strftime('%Y-%m')
 
     def _in_period(d):
         if period == 'all':
@@ -727,8 +733,8 @@ def api_spending():
     months_sorted = sorted(available_months, reverse=True)
     months_list = [f'{y:04d}-{m:02d}' for y, m in months_sorted]
     years_list = sorted({y for y, _ in months_sorted}, reverse=True)
-    if not period and months_list:
-        period = months_list[0]
+    if not period:
+        period = _default_period(months_list)
 
     def _in_period(d):
         if period == 'all':
@@ -776,8 +782,8 @@ def api_income():
     months_sorted = sorted(available_months, reverse=True)
     months_list = [f'{y:04d}-{m:02d}' for y, m in months_sorted]
     years_list = sorted({y for y, _ in months_sorted}, reverse=True)
-    if not period and months_list:
-        period = months_list[0]
+    if not period:
+        period = _default_period(months_list)
 
     def _in_period(d):
         if period == 'all':
