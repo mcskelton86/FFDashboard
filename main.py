@@ -140,12 +140,21 @@ def _parse_current_account_pdf(pdf):
     """Nationwide FlexDirect (current account) statement."""
     transactions = []
 
+    # Statement header appears in two formats across our sample:
+    #   "Statementdate: 24 March 2026"           (newer)
+    #   "Statement 24 December 2025 Sortcode..." (older)
+    # Match either: optional "date" suffix, optional colon, then DD Month YYYY.
     statement_year = None
+    statement_date = None
     for page in pdf.pages:
         text = page.extract_text() or ''
-        m = re.search(r'Statementdate:?\s+\d{1,2}\s+\w+\s+(\d{4})', text)
+        m = re.search(r'Statement(?:\s*date)?:?\s+(\d{1,2})\s+(\w+)\s+(\d{4})', text, re.IGNORECASE)
         if m:
-            statement_year = int(m.group(1))
+            statement_year = int(m.group(3))
+            try:
+                statement_date = datetime.strptime(f'{m.group(1)} {m.group(2)[:3]} {m.group(3)}', '%d %b %Y')
+            except ValueError:
+                pass
             break
     if statement_year is None:
         statement_year = datetime.now().year
@@ -196,8 +205,20 @@ def _parse_current_account_pdf(pdf):
                     and line_words[1]['text'] in _MONTH_ABBREVS):
                 day = int(line_words[0]['text'])
                 mon = line_words[1]['text']
+                # A statement can span a year boundary (e.g. Jan statement
+                # covers late-Dec previous year → late-Jan current year). If
+                # the txn month is later in the year than the statement
+                # month, it must belong to the previous calendar year.
+                year_for_txn = statement_year
+                if statement_date is not None:
+                    txn_month_idx = list(_MONTH_ABBREVS).index(mon) if mon in _MONTH_ABBREVS else None
+                    # Use a real index lookup since the set above is unordered.
+                    months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+                    txn_m = months.index(mon) + 1
+                    if txn_m > statement_date.month:
+                        year_for_txn = statement_year - 1
                 try:
-                    cur_date = datetime.strptime(f'{day} {mon} {statement_year}', '%d %b %Y')
+                    cur_date = datetime.strptime(f'{day} {mon} {year_for_txn}', '%d %b %Y')
                 except ValueError:
                     pass
                 desc_start_idx = 2
