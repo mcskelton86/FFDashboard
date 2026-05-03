@@ -415,6 +415,10 @@
         if (extracted.hours) {
           document.getElementById('hoursWorked').value = extracted.hours;
         }
+        if (extracted.person) {
+          const sel = document.getElementById('payPerson');
+          if (sel) sel.value = extracted.person;
+        }
 
         // Show review content
         document.getElementById('loading').style.display = 'none';

@@ -17,7 +17,7 @@ SHEET_ID = '1nnEwkIrvAQwIIQDnHBPAYumoTBv04wgOnq_R8A7xuIM'
 
 # File upload configuration
 UPLOAD_FOLDER = '/tmp/payslips'
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp'}
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'pdf'}
 MAX_FILE_SIZE = 16 * 1024 * 1024  # 16MB
 
 if not os.path.exists(UPLOAD_FOLDER):
@@ -553,28 +553,36 @@ def upload_payslip():
         if not ('.' in file.filename and file.filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS):
             return jsonify({'success': False, 'error': 'Invalid file type. Use PNG, JPG, etc.'})
 
-        # Read and process image
-        image_data = file.read()
-        image = Image.open(io.BytesIO(image_data))
+        ext = file.filename.rsplit('.', 1)[1].lower()
+        file_data = file.read()
+        image_base64 = ''
 
-        # Convert to RGB if needed
-        if image.mode in ('RGBA', 'LA', 'P'):
-            rgb_image = Image.new('RGB', image.size, (255, 255, 255))
-            rgb_image.paste(image, mask=image.split()[-1] if image.mode == 'RGBA' else None)
-            image = rgb_image
+        if ext == 'pdf':
+            # Digital payslip — extract text directly with pdfplumber.
+            with pdfplumber.open(io.BytesIO(file_data)) as pdf:
+                ocr_text = '\n'.join((p.extract_text() or '') for p in pdf.pages)
+        else:
+            image = Image.open(io.BytesIO(file_data))
+            if image.mode in ('RGBA', 'LA', 'P'):
+                rgb_image = Image.new('RGB', image.size, (255, 255, 255))
+                rgb_image.paste(image, mask=image.split()[-1] if image.mode == 'RGBA' else None)
+                image = rgb_image
+            ocr_buf = io.BytesIO()
+            image.save(ocr_buf, format='PNG')
+            ocr_text = ocr_via_ocrspace(ocr_buf.getvalue(), file.filename)
+            buffered = io.BytesIO()
+            image.save(buffered, format='PNG')
+            image_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
 
-        # Run OCR via OCR.space (cloud, no system deps).
-        ocr_buf = io.BytesIO()
-        image.save(ocr_buf, format='PNG')
-        ocr_text = ocr_via_ocrspace(ocr_buf.getvalue(), file.filename)
-
-        # Extract payslip data
         extracted = parse_payslip_text(ocr_text)
 
-        # Convert image to base64 for display
-        buffered = io.BytesIO()
-        image.save(buffered, format='PNG')
-        image_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+        # Riley's employer name is "JC of Lymingon Ltd" (typo in the original — keep both spellings).
+        emp = (extracted.get('employer') or '').lower()
+        full = ocr_text.lower()
+        if 'jc of lymingon' in full or 'jc of lymington' in full or 'jc lymingon' in full:
+            extracted['person'] = 'Riley'
+        else:
+            extracted['person'] = 'Matthew'
 
         return jsonify({
             'success': True,
@@ -774,27 +782,41 @@ def get_this_month_summary():
     total_out = 0
     by_category = {}
 
+    # Payslip net amounts for this month — used to suppress matching bank
+    # deposits so we don't double-count salary income.
+    payslip_nets_this_month = []
+    for payslip in payslips:
+        try:
+            d = datetime.strptime(payslip['date'], '%d %b %Y')
+            if d.strftime('%B') == current_month and d.strftime('%Y') == current_year:
+                total_in += payslip['amount']
+                payslip_nets_this_month.append(payslip['amount'])
+        except (ValueError, TypeError):
+            continue
+
+    def _matches_payslip(amt):
+        for net_amt in payslip_nets_this_month:
+            if abs(amt - net_amt) < 1.0:
+                return True
+        return False
+
     # Process transactions
     for txn in transactions:
         try:
             txn_date = datetime.strptime(txn['date'], '%d %b %Y')
             if txn_date.strftime('%B') == current_month and txn_date.strftime('%Y') == current_year:
-                total_in += txn['amountIn']
+                amt_in = txn['amountIn']
+                # Skip income deposits already represented by a payslip.
+                if amt_in > 0 and _matches_payslip(amt_in):
+                    pass
+                else:
+                    total_in += amt_in
                 total_out += txn['amountOut']
 
                 category = txn['category']
                 if category not in by_category:
                     by_category[category] = 0
                 by_category[category] += txn['amountOut']
-        except:
-            continue
-
-    # Process payslips
-    for payslip in payslips:
-        try:
-            payslip_date = datetime.strptime(payslip['date'], '%d %b %Y')
-            if payslip_date.strftime('%B') == current_month and payslip_date.strftime('%Y') == current_year:
-                total_in += payslip['amount']
         except:
             continue
 
