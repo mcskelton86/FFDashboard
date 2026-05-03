@@ -352,10 +352,12 @@ def parse_payslip_text(ocr_text):
     if m:
         result['hourly_rate'] = _money(m.group(1))
 
-    # Tax / Pension / NI — labels and amounts can be split across columns or
-    # newlines in OCR output, so allow up to ~40 chars between label and number.
+    # Strip the "Employer Contributions" block before searching for deductions —
+    # employer-side NI/Pension are costs to the employer, not deducted from net.
+    deductions_text = re.split(r'Employer\s+Contribution', ocr_text, maxsplit=1, flags=re.IGNORECASE)[0]
+
     for key, label in (('pension', r'Pension'), ('tax', r'(?:PAYE\s*Tax|Tax|PAYE)'), ('ni', r'National\s*Insurance|\bNI\b')):
-        m = re.search(rf'(?:{label})[^\d£€\n]{{0,40}}[£€]?\s*([\d,]+\.\d{{2}})', ocr_text, re.IGNORECASE)
+        m = re.search(rf'(?:{label})[^\d£€\n]{{0,40}}[£€]?\s*([\d,]+\.\d{{2}})', deductions_text, re.IGNORECASE)
         if m:
             result[key] = _money(m.group(1))
 
