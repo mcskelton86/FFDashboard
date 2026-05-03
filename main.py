@@ -774,12 +774,14 @@ def get_this_month_summary():
 
     # Pick the latest month that actually has expenses — we don't have a live
     # bank feed, so a strict "previous calendar month" is often empty.
+    today = datetime.now()
     months_with_spend = set()
     for txn in transactions:
         try:
             if txn.get('amountOut', 0) > 0:
                 d = datetime.strptime(txn['date'], '%d %b %Y')
-                months_with_spend.add((d.year, d.month))
+                if d <= today:
+                    months_with_spend.add((d.year, d.month))
         except (ValueError, TypeError):
             continue
 
